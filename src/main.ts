@@ -52,7 +52,63 @@ let busy = false;
 let toastTimer: ReturnType<typeof setTimeout>;
 let lastGameRender = "";
 let routeGeneration = 0;
-let saving = false;
+const pendingSaves = new Map<string, Board>();
+const syncErrors = new Map<string, string>();
+let syncTimer: ReturnType<typeof setTimeout>;
+let syncPromise: Promise<void> | undefined;
+function updateSaveStatus() {
+  const state = document.querySelector("#save-state");
+  if (!state || !board) return;
+  state
+    .closest(".save-line")
+    ?.setAttribute(
+      "data-state",
+      syncErrors.has(board.id)
+        ? "error"
+        : pendingSaves.has(board.id)
+          ? "saving"
+          : "saved",
+    );
+  state.textContent =
+    syncErrors.get(board.id) ||
+    (pendingSaves.has(board.id) ? "Saving…" : "Saved");
+}
+function queueSave(value: Board) {
+  pendingSaves.set(value.id, structuredClone(value));
+  syncErrors.delete(value.id);
+  store("jeopardy.pending", [...pendingSaves.keys()]);
+  updateSaveStatus();
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => void flushSaves(), 700);
+}
+function flushSaves(): Promise<void> {
+  clearTimeout(syncTimer);
+  if (syncPromise) return syncPromise;
+  syncPromise = (async () => {
+    const failed = new Set<string>();
+    while (pendingSaves.size) {
+      const entry = [...pendingSaves].find(([id]) => !failed.has(id));
+      if (!entry) break;
+      const [id, snapshot] = entry;
+      try {
+        validateBoard(snapshot, true);
+        await api(`boards/${id}`, "PUT", { board: snapshot }, boardKey(id));
+        if (pendingSaves.get(id) === snapshot) pendingSaves.delete(id);
+        syncErrors.delete(id);
+      } catch (error) {
+        failed.add(id);
+        syncErrors.set(id, "Not synced. Saved on this device; retrying.");
+      }
+      store("jeopardy.pending", [...pendingSaves.keys()]);
+      updateSaveStatus();
+    }
+  })().finally(() => {
+    syncPromise = undefined;
+    if (pendingSaves.size)
+      syncTimer = setTimeout(() => void flushSaves(), 10000);
+  });
+  return syncPromise;
+}
 
 function toast(message: string, error = false) {
   document.querySelector(".toast")?.remove();
@@ -92,8 +148,7 @@ function persistBoard() {
   board.updatedAt = new Date().toISOString();
   boards = [board, ...boards.filter((b) => b.id !== board!.id)];
   store("jeopardy.boards", boards);
-  const state = document.querySelector("#save-state");
-  if (state) state.textContent = "Saved on this device";
+  queueSave(board);
 }
 function boardKey(id: string) {
   if (!keys[id]) {
@@ -146,10 +201,11 @@ function editor() {
     selected = board.categories[0].cards[0].id;
   page(
     "Edit game",
-    `<div class="editor-title"><label for="board-title">Game title</label><input id="board-title" maxlength="100" placeholder="Jeopardy" value="${esc(board.title)}"><div class="save-line"><span class="status-dot"></span><span id="save-state">Saved on this device</span></div></div><div class="editor-layout"><section class="board-editor" aria-label="Categories and cards"><div class="section-heading"><h2>Board</h2><span id="card-count">${readyCards(board).length} / ${board.categories.length * 5} cards ready</span></div><div class="edit-grid" style="--columns:${board.categories.length}">${board.categories.map((c, index) => `<div class="edit-category"><div class="category-name"><label class="sr-only" for="category-${index}">Category ${index + 1}</label><input id="category-${index}" data-category="${esc(c.id)}" maxlength="60" placeholder="Category ${index + 1}" value="${esc(c.name.trim() || `Category ${index + 1}`)}"><button class="remove-category" data-action="remove-category" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name.trim() || `Category ${index + 1}`)}" ${board!.categories.length === 1 ? "disabled" : ""}>×</button></div>${c.cards.map((card) => `<button class="edit-card ${card.id === selected ? "selected" : ""} ${card.clue.trim() && card.answer.trim() ? "complete" : ""}" data-action="edit-card" data-id="${esc(card.id)}" aria-pressed="${card.id === selected}" aria-label="${esc(c.name.trim() || `Category ${index + 1}`)}, ${money(card.value)}, ${card.clue.trim() && card.answer.trim() ? "ready" : "empty"}"><strong>${money(card.value)}</strong><span>${card.clue.trim() && card.answer.trim() ? "Ready" : "Add clue"}</span></button>`).join("")}</div>`).join("")}</div><button class="text-button add-category" data-action="add-category" ${board.categories.length >= 8 ? "disabled" : ""}>+ Add category</button></section><aside class="card-editor" id="card-editor"></aside></div><footer class="editor-footer"><p>Changes save on this device as you type. Save online to use an edit link on another device.</p><button data-action="export">Export game</button></footer>`,
-    `<a class="button" href="#library">Done</a><button data-action="save-online">Save online</button><a class="button primary" href="#setup/${esc(board.id)}">Play game →</a>`,
+    `<div class="editor-title"><label for="board-title">Game title</label><input id="board-title" maxlength="100" placeholder="Jeopardy" value="${esc(board.title)}"><div class="save-line"><span class="status-dot"></span><span id="save-state" role="status">Saving…</span></div></div><div class="editor-layout"><section class="board-editor" aria-label="Categories and cards"><div class="section-heading"><h2>Board</h2><span id="card-count">${readyCards(board).length} / ${board.categories.length * 5} cards ready</span></div><div class="edit-grid" style="--columns:${board.categories.length}">${board.categories.map((c, index) => `<div class="edit-category"><div class="category-name"><label class="sr-only" for="category-${index}">Category ${index + 1}</label><input id="category-${index}" data-category="${esc(c.id)}" maxlength="60" placeholder="Category ${index + 1}" value="${esc(c.name)}"><button class="remove-category" data-action="remove-category" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name.trim() || `Category ${index + 1}`)}" ${board!.categories.length === 1 ? "disabled" : ""}>×</button></div>${c.cards.map((card) => `<button class="edit-card ${card.id === selected ? "selected" : ""} ${card.clue.trim() && card.answer.trim() ? "complete" : ""}" data-action="edit-card" data-id="${esc(card.id)}" aria-pressed="${card.id === selected}" aria-label="${esc(c.name.trim() || `Category ${index + 1}`)}, ${money(card.value)}, ${card.clue.trim() && card.answer.trim() ? "ready" : "empty"}"><strong>${money(card.value)}</strong><span>${card.clue.trim() && card.answer.trim() ? "Ready" : "Add clue"}</span></button>`).join("")}</div>`).join("")}</div><button class="text-button add-category" data-action="add-category" ${board.categories.length >= 8 ? "disabled" : ""}>+ Add category</button></section><aside class="card-editor" id="card-editor"></aside></div><footer class="editor-footer"><p>Changes save automatically. Use an edit link to open this board on another device.</p><button data-action="export">Export game</button></footer>`,
+    `<a class="button" href="#library">Done</a><button data-action="share-edit">Share edit link</button><a class="button primary" href="#setup/${esc(board.id)}">Play game →</a>`,
   );
   renderCardEditor();
+  queueSave(board);
 }
 function renderCardEditor() {
   const category = board?.categories.find((c) =>
@@ -354,7 +410,7 @@ async function route() {
           keys[id],
         );
         if (generation !== routeGeneration) return;
-        board = validateBoard(result.board);
+        board = validateBoard(result.board, true);
         persistBoard();
       }
       if (!board) {
@@ -402,26 +458,23 @@ async function action(type: string, extra: Record<string, unknown> = {}) {
   game = result.game;
   renderGame();
 }
-async function saveOnline() {
-  if (!board || saving) return;
-  validateBoard(board);
-  saving = true;
-  try {
-    await api(`boards/${board.id}`, "PUT", { board }, boardKey(board.id));
-    const url = `${location.origin}${location.pathname}#edit/${board.id}?key=${boardKey(board.id)}`;
-    const state = document.querySelector("#save-state");
-    if (state) state.textContent = "Saved online";
-    const aside = document.querySelector("#share-board");
-    aside?.remove();
-    const block = document.createElement("section");
-    block.id = "share-board";
-    block.className = "share-board";
-    block.innerHTML = `<label for="edit-link">Edit link <span>Anyone with this link can edit this board.</span></label><div class="link-row"><input id="edit-link" readonly value="${esc(url)}"><button data-action="copy-edit">Copy link</button><button data-action="close-share" aria-label="Close edit link">×</button></div>`;
-    document.querySelector(".editor-title")!.after(block);
-    toast("Game saved online.");
-  } finally {
-    saving = false;
-  }
+async function shareEditLink() {
+  if (!board) return;
+  const id = board.id;
+  queueSave(board);
+  await flushSaves();
+  if (pendingSaves.has(id))
+    throw new Error(
+      "The board hasn’t synced yet. Check the connection and try again.",
+    );
+  if (view !== "edit" || board.id !== id) return;
+  const url = `${location.origin}${location.pathname}#edit/${id}?key=${boardKey(id)}`;
+  document.querySelector("#share-board")?.remove();
+  const block = document.createElement("section");
+  block.id = "share-board";
+  block.className = "share-board";
+  block.innerHTML = `<label for="edit-link">Edit link <span>Anyone with this link can edit this board.</span></label><div class="link-row"><input id="edit-link" readonly value="${esc(url)}"><button data-action="copy-edit">Copy link</button><button data-action="close-share" aria-label="Close edit link">×</button></div>`;
+  document.querySelector(".editor-title")!.after(block);
 }
 async function copy(text: string) {
   try {
@@ -497,7 +550,7 @@ app.addEventListener("change", (event) => {
     void file
       .text()
       .then((text) => {
-        board = validateBoard(JSON.parse(text));
+        board = validateBoard(JSON.parse(text), true);
         board.id = uid();
         persistBoard();
         navigate(`edit/${board.id}`);
@@ -634,9 +687,9 @@ app.addEventListener("click", async (event) => {
       case "export":
         saveDownload(board!);
         break;
-      case "save-online":
-        button.textContent = "Saving…";
-        await saveOnline();
+      case "share-edit":
+        button.textContent = "Getting link…";
+        await shareEditLink();
         break;
       case "copy-edit":
         await copy(
@@ -699,11 +752,25 @@ app.addEventListener("click", async (event) => {
     if (game) void refreshRoom(true);
   } finally {
     busy = false;
-    if (name === "save-online" && button.isConnected)
-      button.textContent = "Save online";
+    if (name === "share-edit" && button.isConnected)
+      button.textContent = "Share edit link";
   }
 });
-window.addEventListener("hashchange", () => void route());
+window.addEventListener("hashchange", () => {
+  void flushSaves();
+  void route();
+});
+window.addEventListener("online", () => void flushSaves());
+window.addEventListener("beforeunload", (event) => {
+  if (pendingSaves.size) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
+for (const id of read<string[]>("jeopardy.pending", [])) {
+  const draft = boards.find((b) => b.id === id);
+  if (draft) queueSave(draft);
+}
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && game) void refreshRoom(true);
 });

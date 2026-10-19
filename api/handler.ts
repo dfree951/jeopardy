@@ -111,7 +111,7 @@ export default async function handler(req: Request, res: ServerResponse) {
         return;
       }
       if (req.method === "PUT") {
-        const board = validateBoard(body.board);
+        const board = validateBoard(body.board, true);
         if (board.id !== id || !/^[a-f0-9]{48}$/.test(auth))
           throw new Error("Invalid edit key.");
         const saved =

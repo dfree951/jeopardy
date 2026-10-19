@@ -130,6 +130,7 @@ test("imports reject duplicate card IDs, partial clues, and invalid values", () 
   const board = sampleBoard();
   board.categories[0].cards[0].answer = "";
   assert.throws(() => validateBoard(board));
+  assert.equal(validateBoard(board, true).categories[0].cards[0].answer, "");
   board.categories[0].cards[0].answer = "Paris";
   board.categories[0].cards[0].value = -1;
   assert.throws(() => validateBoard(board));

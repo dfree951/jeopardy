@@ -4,7 +4,7 @@
 
 Create a board and play with teams or individuals. Use a shared screen, or let players join a room on their phones to buzz in.
 
-The host selects clues, reveals answers, and keeps score. Boards save on your device and can be exported as JSON. Save online to get an edit link for another device.
+The host selects clues, reveals answers, and keeps score. Boards save to the database automatically as you edit, with a device copy kept if the connection drops. Use an edit link to open a board on another device, or export it as JSON.
 
 ## Development
 

@@ -54,7 +54,7 @@ export function blankBoard(): Board {
     })),
   };
 }
-export function validateBoard(input: unknown): Board {
+export function validateBoard(input: unknown, draft = false): Board {
   const b = input as Board;
   if (
     !b ||
@@ -99,7 +99,7 @@ export function validateBoard(input: unknown): Board {
       )
         throw new Error("Check card values and text lengths.");
       ids.add(card.id);
-      if (!!card.clue.trim() !== !!card.answer.trim())
+      if (!draft && !!card.clue.trim() !== !!card.answer.trim())
         throw new Error("Add both a clue and an answer, or leave both blank.");
     }
   }

@@ -325,10 +325,19 @@ p {
   background: #4e8062;
   border-radius: 50%;
 }
+.save-line[data-state="saving"] .status-dot {
+  background: #8c7948;
+}
+.save-line[data-state="error"] .status-dot {
+  background: #ab4c34;
+}
 .editor-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
   gap: 32px;
+}
+.editor-layout > * {
+  min-width: 0;
 }
 .section-heading {
   display: flex;
