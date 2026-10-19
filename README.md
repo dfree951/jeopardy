@@ -13,3 +13,5 @@ Run `npm install`, then `npm run dev` for the frontend. Use `vercel dev` to run 
 `npm test` checks the game rules. `npm run build` builds the app.
 
 The frontend deploys to GitHub Pages. The API runs on Vercel with Neon Postgres. Set `VITE_API_ORIGIN` when building the frontend for a separate API host.
+
+Backend updates deploy with `vercel deploy --prod`. The GitHub workflow publishes frontend changes automatically.
