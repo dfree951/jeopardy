@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { sampleBoard } from "../src/sample";
-import { activeCard, publicGame, validateBoard } from "../src/model";
+import {
+  activeCard,
+  blankBoard,
+  publicGame,
+  validateBoard,
+} from "../src/model";
 import { createGame, hostAction, buzz } from "../server/game";
 
 function playing(mode: "screen" | "buzzer" = "screen") {
@@ -12,6 +17,24 @@ function playing(mode: "screen" | "buzzer" = "screen") {
     cardId: game.categories[0].cards[0].id,
   });
 }
+test("new boards keep inputs empty and gameplay supplies default labels", () => {
+  const board = blankBoard();
+  assert.equal(board.title, "");
+  assert.ok(board.categories.every((category) => category.name === ""));
+  board.categories[0].cards[0].clue = "Clue";
+  board.categories[0].cards[0].answer = "Answer";
+  board.title = "   ";
+  validateBoard(board);
+  const game = createGame(board, "ABC234", "screen", "teams", ["Team 1"]);
+  assert.equal(game.title, "Jeopardy");
+  assert.equal(game.categories[0].name, "Category 1");
+  assert.equal(board.categories[0].name, "");
+  board.title = "Friday trivia";
+  assert.equal(
+    createGame(board, "ABC234", "screen", "teams", ["Team 1"]).title,
+    "Friday trivia",
+  );
+});
 test("public state conceals unselected clues, unrevealed answers, and credentials", () => {
   const game = playing();
   game.players[0].token = "private";

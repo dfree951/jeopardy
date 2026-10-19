@@ -72,6 +72,7 @@ input,
 textarea,
 select {
   width: 100%;
+  min-width: 0;
   border: 1px solid #cdd0d7;
   border-radius: 5px;
   background: #fdfdfb;
@@ -352,8 +353,8 @@ p {
   grid-template-columns: repeat(var(--columns), minmax(110px, 1fr));
   gap: 8px;
   overflow-x: auto;
-  padding: 4px 4px 6px;
-  margin: -4px;
+  padding: 7px;
+  margin: -7px;
 }
 .edit-category {
   display: flex;
@@ -446,7 +447,12 @@ p {
   border-radius: 5px;
   max-width: 140px;
 }
+.value-input:focus-within {
+  outline: 3px solid #be8426;
+  outline-offset: 3px;
+}
 .value-input span {
+  flex-shrink: 0;
   padding-left: 12px;
   color: var(--muted);
 }
@@ -454,6 +460,9 @@ p {
   border: 0;
   width: 100%;
   background: transparent;
+}
+.value-input input:focus-visible {
+  outline: none;
 }
 .card-editor textarea {
   font-size: 14px;
@@ -742,7 +751,7 @@ legend {
 }
 .board-scroll {
   overflow-x: auto;
-  padding: 3px;
+  padding: 7px;
 }
 .play-category {
   display: grid;

@@ -40,11 +40,11 @@ export const uid = () => crypto.randomUUID();
 export function blankBoard(): Board {
   return {
     id: uid(),
-    title: "Untitled game",
+    title: "",
     updatedAt: new Date().toISOString(),
-    categories: Array.from({ length: 6 }, (_, i) => ({
+    categories: Array.from({ length: 6 }, () => ({
       id: uid(),
-      name: `Category ${i + 1}`,
+      name: "",
       cards: [200, 400, 600, 800, 1000].map((value) => ({
         id: uid(),
         value,
@@ -61,13 +61,14 @@ export function validateBoard(input: unknown): Board {
     typeof b.id !== "string" ||
     !b.id ||
     typeof b.title !== "string" ||
-    !b.title.trim() ||
     b.title.length > 100 ||
     !Array.isArray(b.categories) ||
     b.categories.length < 1 ||
     b.categories.length > 8
   )
-    throw new Error("Use a title and between 1 and 8 categories.");
+    throw new Error(
+      "Use between 1 and 8 categories and a title under 100 characters.",
+    );
   const ids = new Set<string>();
   for (const category of b.categories) {
     if (
@@ -75,12 +76,13 @@ export function validateBoard(input: unknown): Board {
       !category.id ||
       ids.has(category.id) ||
       typeof category.name !== "string" ||
-      !category.name.trim() ||
       category.name.length > 60 ||
       !Array.isArray(category.cards) ||
       category.cards.length !== 5
     )
-      throw new Error("Each category needs a name and five cards.");
+      throw new Error(
+        "Each category needs five cards and a name under 60 characters.",
+      );
     ids.add(category.id);
     for (const card of category.cards) {
       if (

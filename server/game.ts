@@ -33,10 +33,13 @@ export function createGame(
     throw new Error("Add at least one team or player.");
   return {
     code,
-    title: board.title,
+    title: board.title.trim() || "Jeopardy",
     mode,
     format,
-    categories: structuredClone(board.categories),
+    categories: board.categories.map((category, index) => ({
+      ...structuredClone(category),
+      name: category.name.trim() || `Category ${index + 1}`,
+    })),
     players: clean.map((name) => ({ id: randomUUID(), name, score: 0 })),
     used: board.categories
       .flatMap((c) => c.cards)
