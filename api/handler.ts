@@ -15,6 +15,7 @@ function database() {
 async function init() {
   const sql = database();
   await sql`CREATE TABLE IF NOT EXISTS jeopardy_boards (id text PRIMARY KEY, secret text NOT NULL, board jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`ALTER TABLE jeopardy_boards ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
   await sql`CREATE TABLE IF NOT EXISTS jeopardy_games (code text PRIMARY KEY, host_token text NOT NULL, state jsonb NOT NULL, version integer NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now())`;
 }
 function same(a: string, b: string) {
@@ -92,13 +93,31 @@ export default async function handler(req: Request, res: ServerResponse) {
     }
     if (parts[0] === "boards") {
       const id = parts[1];
+      if (!id && req.method === "GET") {
+        const rows =
+          await sql`SELECT board, archived_at FROM jeopardy_boards ORDER BY updated_at DESC`;
+        send(200, {
+          boards: rows
+            .filter((row) => !row.archived_at)
+            .map((row) => row.board),
+          archivedIds: rows
+            .filter((row) => row.archived_at)
+            .map((row) => row.board.id),
+        });
+        return;
+      }
       if (!id || id.length > 100) {
         send(400, { error: "Invalid board." });
         return;
       }
       const rows = await sql`SELECT * FROM jeopardy_boards WHERE id = ${id}`;
-      if (rows.length && !same(rows[0].secret, auth)) {
-        send(403, { error: "Use the edit link for this board." });
+      if (rows[0]?.archived_at) {
+        send(404, { error: "This game was removed from My games." });
+        return;
+      }
+      if (parts[2] === "archive" && req.method === "POST") {
+        await sql`UPDATE jeopardy_boards SET archived_at = now(), updated_at = now() WHERE id = ${id}`;
+        send(200, { archived: true });
         return;
       }
       if (req.method === "GET") {
@@ -112,12 +131,11 @@ export default async function handler(req: Request, res: ServerResponse) {
       }
       if (req.method === "PUT") {
         const board = validateBoard(body.board, true);
-        if (board.id !== id || !/^[a-f0-9]{48}$/.test(auth))
-          throw new Error("Invalid edit key.");
+        if (board.id !== id) throw new Error("Invalid board.");
         const saved =
-          await sql`INSERT INTO jeopardy_boards (id, secret, board) VALUES (${id}, ${auth}, ${JSON.stringify(board)}::jsonb) ON CONFLICT (id) DO UPDATE SET board = EXCLUDED.board, updated_at = now() WHERE jeopardy_boards.secret = EXCLUDED.secret RETURNING id`;
+          await sql`INSERT INTO jeopardy_boards (id, secret, board) VALUES (${id}, ${secret()}, ${JSON.stringify(board)}::jsonb) ON CONFLICT (id) DO UPDATE SET board = EXCLUDED.board, updated_at = now() WHERE jeopardy_boards.archived_at IS NULL RETURNING id`;
         if (!saved.length) {
-          send(403, { error: "Use the edit link for this board." });
+          send(409, { error: "This game was removed from My games." });
           return;
         }
         send(200, { saved: true });

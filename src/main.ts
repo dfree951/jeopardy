@@ -38,7 +38,6 @@ function store(key: string, value: unknown) {
   }
 }
 let boards = read<Board[]>("jeopardy.boards", []);
-const keys = read<Record<string, string>>("jeopardy.keys", {});
 let board: Board | undefined;
 let selected: string | null = null;
 let game: Game | undefined;
@@ -92,7 +91,7 @@ function flushSaves(): Promise<void> {
       const [id, snapshot] = entry;
       try {
         validateBoard(snapshot, true);
-        await api(`boards/${id}`, "PUT", { board: snapshot }, boardKey(id));
+        await api(`boards/${id}`, "PUT", { board: snapshot });
         if (pendingSaves.get(id) === snapshot) pendingSaves.delete(id);
         syncErrors.delete(id);
       } catch (error) {
@@ -150,15 +149,6 @@ function persistBoard() {
   store("jeopardy.boards", boards);
   queueSave(board);
 }
-function boardKey(id: string) {
-  if (!keys[id]) {
-    keys[id] = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) =>
-      b.toString(16).padStart(2, "0"),
-    ).join("");
-    store("jeopardy.keys", keys);
-  }
-  return keys[id];
-}
 function saveDownload(board: Board) {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(board, null, 2)], { type: "application/json" }),
@@ -182,8 +172,50 @@ function library() {
       .join(
         "",
       )}</section><input type="file" id="import-file" accept="application/json,.json" hidden>`,
-    '<button data-action="import">Import</button><button class="primary" data-action="new">+ Create a game</button>',
+    '<button data-action="refresh-library">Refresh</button><button data-action="import">Import</button><button class="primary" data-action="new">+ Create a game</button>',
   );
+  if (libraryMessage) {
+    const message = document.createElement("p");
+    message.setAttribute("role", "status");
+    message.textContent = libraryMessage;
+    document.querySelector(".page-heading")!.after(message);
+  }
+}
+let libraryLoading = false;
+let libraryMessage = "";
+async function loadLibrary() {
+  const generation = routeGeneration;
+  libraryLoading = true;
+  libraryMessage = "Loading saved games…";
+  library();
+  try {
+    await flushSaves();
+    const result = await api("boards");
+    const remote = (result.boards as unknown[]).map((value) =>
+      validateBoard(value, true),
+    );
+    const archived = new Set<string>(result.archivedIds || []);
+    for (const id of archived) pendingSaves.delete(id);
+    const byId = new Map(remote.map((value) => [value.id, value]));
+    for (const local of boards) {
+      if (archived.has(local.id)) continue;
+      if (pendingSaves.has(local.id)) byId.set(local.id, local);
+      else if (!byId.has(local.id)) {
+        byId.set(local.id, local);
+        queueSave(local);
+      }
+    }
+    boards = [...byId.values()];
+    store("jeopardy.boards", boards);
+    store("jeopardy.pending", [...pendingSaves.keys()]);
+    libraryMessage = "";
+  } catch {
+    libraryMessage =
+      "Couldn’t load saved games. Showing device copies. Try Refresh.";
+  } finally {
+    libraryLoading = false;
+    if (view === "library" && generation === routeGeneration) library();
+  }
 }
 function editor() {
   if (!board) return;
@@ -201,11 +233,11 @@ function editor() {
     selected = board.categories[0].cards[0].id;
   page(
     "Edit game",
-    `<div class="editor-title"><label for="board-title">Game title</label><input id="board-title" maxlength="100" placeholder="Jeopardy" value="${esc(board.title)}"><div class="save-line"><span class="status-dot"></span><span id="save-state" role="status">Saving…</span></div></div><div class="editor-layout"><section class="board-editor" aria-label="Categories and cards"><div class="section-heading"><h2>Board</h2><span id="card-count">${readyCards(board).length} / ${board.categories.length * 5} cards ready</span></div><div class="edit-grid" style="--columns:${board.categories.length}">${board.categories.map((c, index) => `<div class="edit-category"><div class="category-name"><label class="sr-only" for="category-${index}">Category ${index + 1}</label><input id="category-${index}" data-category="${esc(c.id)}" maxlength="60" placeholder="Category ${index + 1}" value="${esc(c.name)}"><button class="remove-category" data-action="remove-category" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name.trim() || `Category ${index + 1}`)}" ${board!.categories.length === 1 ? "disabled" : ""}>×</button></div>${c.cards.map((card) => `<button class="edit-card ${card.id === selected ? "selected" : ""} ${card.clue.trim() && card.answer.trim() ? "complete" : ""}" data-action="edit-card" data-id="${esc(card.id)}" aria-pressed="${card.id === selected}" aria-label="${esc(c.name.trim() || `Category ${index + 1}`)}, ${money(card.value)}, ${card.clue.trim() && card.answer.trim() ? "ready" : "empty"}"><strong>${money(card.value)}</strong><span>${card.clue.trim() && card.answer.trim() ? "Ready" : "Add clue"}</span></button>`).join("")}</div>`).join("")}</div><button class="text-button add-category" data-action="add-category" ${board.categories.length >= 8 ? "disabled" : ""}>+ Add category</button></section><aside class="card-editor" id="card-editor"></aside></div><footer class="editor-footer"><p>Changes save automatically. Use an edit link to open this board on another device.</p><button data-action="export">Export game</button></footer>`,
+    `<div class="editor-title"><label for="board-title">Game title</label><input id="board-title" maxlength="100" placeholder="Jeopardy" value="${esc(board.title)}"><div class="save-line"><span class="status-dot"></span><span id="save-state" role="status">Saving…</span></div></div><div class="editor-layout"><section class="board-editor" aria-label="Categories and cards"><div class="section-heading"><h2>Board</h2><span id="card-count">${readyCards(board).length} / ${board.categories.length * 5} cards ready</span></div><div class="edit-grid" style="--columns:${board.categories.length}">${board.categories.map((c, index) => `<div class="edit-category"><div class="category-name"><label class="sr-only" for="category-${index}">Category ${index + 1}</label><input id="category-${index}" data-category="${esc(c.id)}" maxlength="60" placeholder="Category ${index + 1}" value="${esc(c.name)}"><button class="remove-category" data-action="remove-category" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name.trim() || `Category ${index + 1}`)}" ${board!.categories.length === 1 ? "disabled" : ""}>×</button></div>${c.cards.map((card) => `<button class="edit-card ${card.id === selected ? "selected" : ""} ${card.clue.trim() && card.answer.trim() ? "complete" : ""}" data-action="edit-card" data-id="${esc(card.id)}" aria-pressed="${card.id === selected}" aria-label="${esc(c.name.trim() || `Category ${index + 1}`)}, ${money(card.value)}, ${card.clue.trim() && card.answer.trim() ? "ready" : "empty"}"><strong>${money(card.value)}</strong><span>${card.clue.trim() && card.answer.trim() ? "Ready" : "Add clue"}</span></button>`).join("")}</div>`).join("")}</div><button class="text-button add-category" data-action="add-category" ${board.categories.length >= 8 ? "disabled" : ""}>+ Add category</button></section><aside class="card-editor" id="card-editor"></aside></div><footer class="editor-footer"><p>Changes save automatically and appear in My games on every device.</p><button data-action="export">Export game</button></footer>`,
     `<a class="button" href="#library">Done</a><button data-action="share-edit">Share edit link</button><a class="button primary" href="#setup/${esc(board.id)}">Play game →</a>`,
   );
   renderCardEditor();
-  queueSave(board);
+  updateSaveStatus();
 }
 function renderCardEditor() {
   const category = board?.categories.find((c) =>
@@ -393,25 +425,17 @@ async function route() {
   view = nextView || "library";
   const params = new URLSearchParams(query);
   try {
-    if (view === "library") library();
+    if (view === "library") await loadLibrary();
     else if (view === "join") join();
     else if (view === "edit" || view === "setup") {
       board = boards.find((b) => b.id === id);
-      if (params.has("key")) {
-        keys[id] = params.get("key")!;
-        store("jeopardy.keys", keys);
-      }
-      if ((!board || params.has("key")) && keys[id]) {
+      if (!pendingSaves.has(id)) {
         page("Loading game…", "<p>Getting your saved board.</p>");
-        const result = await api(
-          `boards/${encodeURIComponent(id)}`,
-          "GET",
-          undefined,
-          keys[id],
-        );
+        const result = await api(`boards/${encodeURIComponent(id)}`);
         if (generation !== routeGeneration) return;
         board = validateBoard(result.board, true);
-        persistBoard();
+        boards = [board, ...boards.filter((value) => value.id !== id)];
+        store("jeopardy.boards", boards);
       }
       if (!board) {
         navigate("library");
@@ -468,12 +492,12 @@ async function shareEditLink() {
       "The board hasn’t synced yet. Check the connection and try again.",
     );
   if (view !== "edit" || board.id !== id) return;
-  const url = `${location.origin}${location.pathname}#edit/${id}?key=${boardKey(id)}`;
+  const url = `${location.origin}${location.pathname}#edit/${id}`;
   document.querySelector("#share-board")?.remove();
   const block = document.createElement("section");
   block.id = "share-board";
   block.className = "share-board";
-  block.innerHTML = `<label for="edit-link">Edit link <span>Anyone with this link can edit this board.</span></label><div class="link-row"><input id="edit-link" readonly value="${esc(url)}"><button data-action="copy-edit">Copy link</button><button data-action="close-share" aria-label="Close edit link">×</button></div>`;
+  block.innerHTML = `<label for="edit-link">Edit link <span>Open this board directly. It’s also available in My games.</span></label><div class="link-row"><input id="edit-link" readonly value="${esc(url)}"><button data-action="copy-edit">Copy link</button><button data-action="close-share" aria-label="Close edit link">×</button></div>`;
   document.querySelector(".editor-title")!.after(block);
 }
 async function copy(text: string) {
@@ -613,6 +637,9 @@ app.addEventListener("click", async (event) => {
   busy = true;
   try {
     switch (name) {
+      case "refresh-library":
+        if (!libraryLoading) await loadLibrary();
+        break;
       case "new":
         board = blankBoard();
         persistBoard();
@@ -627,12 +654,12 @@ app.addEventListener("click", async (event) => {
         document.querySelector<HTMLInputElement>("#import-file")!.click();
         break;
       case "delete":
-        if (
-          confirm(
-            "Delete this game from this device? Export a copy first if you want to keep it.",
-          )
-        ) {
-          boards = boards.filter((b) => b.id !== button.dataset.id);
+        if (confirm("Remove this game from My games on all devices?")) {
+          const id = button.dataset.id!;
+          await flushSaves();
+          await api(`boards/${id}/archive`, "POST", {});
+          pendingSaves.delete(id);
+          boards = boards.filter((b) => b.id !== id);
           store("jeopardy.boards", boards);
           library();
         }
@@ -773,6 +800,8 @@ for (const id of read<string[]>("jeopardy.pending", [])) {
 }
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && game) void refreshRoom(true);
+  else if (!document.hidden && view === "library" && !libraryLoading)
+    void loadLibrary();
 });
 document.addEventListener("keydown", (event) => {
   if (

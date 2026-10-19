@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
 import { sampleBoard } from "../src/sample";
 
 const origin = process.env.TEST_BASE_URL;
@@ -30,14 +29,30 @@ async function request(
 }
 const board = sampleBoard();
 board.title = "Integration check";
-const key = randomBytes(24).toString("hex");
+const key = "";
+const draft = structuredClone(board);
+draft.title = "";
+draft.categories[0].name = "";
+draft.categories[0].cards[0].answer = "";
+await request(`boards/${board.id}`, "PUT", { board: draft });
+assert.deepEqual((await request(`boards/${board.id}`)).board, draft);
 await request(`boards/${board.id}`, "PUT", { board }, key);
 assert.deepEqual(
   (await request(`boards/${board.id}`, "GET", undefined, key)).board,
   board,
 );
-await request(`boards/${board.id}`, "GET", undefined, "", 403);
-console.log("Board persistence, edit key, and cross-origin access passed.");
+const library = await request("boards");
+assert.ok(
+  library.boards.some((value: { id: string }) => value.id === board.id),
+);
+assert.ok(
+  library.boards.every(
+    (value: Record<string, unknown>) => !("secret" in value),
+  ),
+);
+console.log(
+  "Shared library, unfinished draft persistence, and access without edit keys passed.",
+);
 const created = await request(
   "games",
   "POST",
@@ -130,3 +145,13 @@ for (const body of [
 }
 assert.equal(game.players[0].score, -200);
 console.log("Shared-screen team game passed.");
+
+await request(`boards/${board.id}/archive`, "POST", {});
+assert.ok(
+  !(await request("boards")).boards.some(
+    (value: { id: string }) => value.id === board.id,
+  ),
+);
+await request(`boards/${board.id}`, "GET", undefined, "", 404);
+await request(`boards/${board.id}`, "PUT", { board }, "", 404);
+console.log("Shared removal and stale-device protection passed.");
