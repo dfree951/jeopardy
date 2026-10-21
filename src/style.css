@@ -413,11 +413,16 @@ p {
   color: #707890;
 }
 .edit-card.complete {
-  background: #e4e9f8;
-  border-color: #c6d0ee;
+  background: #4b6198;
+  border-color: #41578d;
+  color: #f6f8ff;
 }
 .edit-card.complete span {
-  color: #465b95;
+  color: #e4ebff;
+}
+.edit-card.complete:not(.selected):hover {
+  background: #3e548b;
+  border-color: #344979;
 }
 .edit-card.selected {
   background: #1d2b87;
