@@ -190,7 +190,12 @@ export function hostAction(game: Game, action: Record<string, unknown>): Game {
     action.type === "undo" ||
     g.status === "finished"
   )
-    g.mediaPlayback = undefined;
+    g.mediaPlayback =
+      action.type === "select" &&
+      activeCard(g)?.media &&
+      activeCard(g)!.media!.displayByDefault !== false
+        ? { visible: true, playing: false, position: 0, changedAt: Date.now() }
+        : undefined;
   if (
     g.status === "playing" &&
     g.categories.every((c) => c.cards.every((c) => g.used.includes(c.id)))

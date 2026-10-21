@@ -22,6 +22,7 @@ const file: ClueMedia = {
   contentType: "audio/wav",
   name: "answer.wav",
   size: 100,
+  displayByDefault: false,
 };
 function mediaGame(type: ClueMedia["type"] = "audio") {
   const board = blankBoard();
@@ -37,6 +38,33 @@ function mediaGame(type: ClueMedia["type"] = "audio") {
     cardId: board.categories[0].cards[0].id,
   });
 }
+test("default attachments display on selection without starting playback", () => {
+  for (const type of ["image", "video", "audio"] as const) {
+    for (const displayByDefault of [true, undefined]) {
+      const board = blankBoard();
+      const card = board.categories[0].cards[0];
+      card.answer = "Answer";
+      card.media = {
+        ...file,
+        type,
+        contentType:
+          type === "image"
+            ? "image/png"
+            : type === "video"
+              ? "video/mp4"
+              : "audio/wav",
+        displayByDefault,
+      };
+      let game = createGame(board, "ABC234", "screen", "teams", ["Team 1"]);
+      game = hostAction(game, { type: "start" });
+      game = hostAction(game, { type: "select", cardId: card.id });
+      assert.equal(game.mediaPlayback?.visible, true);
+      assert.equal(game.mediaPlayback?.playing, false);
+      assert.equal(game.mediaPlayback?.position, 0);
+      assert.ok(activeCard(publicGame(game))?.media);
+    }
+  }
+});
 test("media-only clues are optional and stay hidden until the host shows them", () => {
   let game = mediaGame();
   assert.equal(activeCard(publicGame(game))?.media, undefined);

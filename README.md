@@ -8,6 +8,8 @@ The host selects clues, reveals answers, and keeps score. My games loads the sha
 
 Cards can optionally include a picture, video, or audio clip up to 50 MB. Uploads are stored in Vercel Blob. The host chooses when to show them and can pause or replay clips. Player screens may need one click to enable sound.
 
+Attachments display when a clue opens unless “Display by default” is unchecked. Video and audio stay paused until the host presses Play.
+
 ## Development
 
 Run `npm install`, then `npm run dev` for the frontend. Use `vercel dev` to run the API too. Add a Postgres connection as `DATABASE_URL` in `.env.local`.

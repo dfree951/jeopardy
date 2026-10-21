@@ -1500,3 +1500,16 @@ legend {
     gap: 7px;
   }
 }
+.media-editor label.media-default {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 18px 0 7px;
+}
+.media-default input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--blue);
+}

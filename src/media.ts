@@ -11,6 +11,7 @@ export type ClueMedia = {
   name: string;
   size: number;
   alt?: string;
+  displayByDefault?: boolean;
 };
 export type MediaPlayback = {
   visible: boolean;
@@ -45,6 +46,8 @@ export function validateMedia(media: ClueMedia) {
     media.size > MAX_MEDIA_BYTES ||
     typeof media.name !== "string" ||
     media.name.length > 250 ||
+    (media.displayByDefault !== undefined &&
+      typeof media.displayByDefault !== "boolean") ||
     (media.alt !== undefined &&
       (typeof media.alt !== "string" || media.alt.length > 300))
   )
