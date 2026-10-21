@@ -155,6 +155,9 @@ function navigate(hash: string) {
   location.hash = hash;
 }
 function page(title: string, body: string, tools = "") {
+  app
+    .querySelectorAll<HTMLMediaElement>("audio, video")
+    .forEach((media) => media.pause());
   document.body.className = "";
   app.innerHTML = `<header class="site-header"><a class="wordmark" href="#library" aria-label="Jeopardy home">JEOPARDY<span>!</span></a><nav aria-label="Main navigation"><a href="#library" ${["library", "edit", "setup"].includes(view) ? 'aria-current="page"' : ""}>My games</a><a href="#join" ${view === "join" ? 'aria-current="page"' : ""}>Join a game</a></nav></header><main class="workspace"><div class="page-heading"><h1>${esc(title)}</h1><div class="actions">${tools}</div></div>${body}</main>`;
 }
@@ -256,13 +259,18 @@ function editor() {
   updateSaveStatus();
 }
 function renderCardEditor() {
+  app
+    .querySelectorAll<HTMLMediaElement>(
+      ".media-preview audio, .media-preview video",
+    )
+    .forEach((media) => media.pause());
   const category = board?.categories.find((c) =>
     c.cards.some((c) => c.id === selected),
   );
   const card = category?.cards.find((c) => c.id === selected);
   if (!card) return;
   document.querySelector("#card-editor")!.innerHTML =
-    `<div class="section-heading"><h2>Card details</h2><span>${esc(category!.name.trim() || `Category ${board!.categories.indexOf(category!) + 1}`)}</span></div><label for="card-value">Value</label><div class="value-input"><span>$</span><input type="number" id="card-value" min="1" max="100000" step="1" value="${card.value}"></div><label for="card-clue">Clue <span>Shown to players</span></label><textarea id="card-clue" maxlength="2000" rows="6" placeholder="Enter the clue…">${esc(card.clue)}</textarea><label for="card-answer">Answer <span>Hidden until revealed</span></label><textarea id="card-answer" maxlength="1000" rows="3" placeholder="Enter the answer…">${esc(card.answer)}</textarea><section class="media-editor"><label for="card-media">Media <span>Optional</span></label><input type="file" id="card-media" accept="${MEDIA_ACCEPT}" ${uploadingCards.has(card.id) ? "disabled" : ""}><p class="field-help">JPG, PNG, GIF, WebP, MP4, WebM, MP3, M4A, WAV, or OGG. Up to 50 MB.</p><p id="upload-progress" role="status">${uploadingCards.has(card.id) ? "Uploading…" : ""}</p>${card.media ? `<div class="media-preview">${card.media.type === "image" ? `<img src="${esc(card.media.url)}" alt="${esc(card.media.alt || "Clue image")}">` : `<${card.media.type} src="${esc(card.media.url)}" controls preload="metadata" ${card.media.type === "video" ? "playsinline" : ""}></${card.media.type}>`}<p>${esc(card.media.name)}</p><button class="text-button" data-action="remove-media">Remove media</button></div>${card.media.type === "image" ? `<label for="media-alt">Image description</label><input id="media-alt" maxlength="300" placeholder="Describe the picture" value="${esc(card.media.alt || "")}">` : ""}` : ""}</section><div class="card-editor-footer"><button class="text-button" data-action="clear-card">Clear card</button><button data-action="next-card">Next card →</button></div>`;
+    `<div class="section-heading"><h2>Card details</h2><span>${esc(category!.name.trim() || `Category ${board!.categories.indexOf(category!) + 1}`)}</span></div><label for="card-value">Value</label><div class="value-input"><span>$</span><input type="number" id="card-value" min="1" max="100000" step="1" value="${card.value}"></div><label for="card-clue">Clue <span>Shown to players</span></label><textarea id="card-clue" maxlength="2000" rows="6" placeholder="Enter the clue…">${esc(card.clue)}</textarea><label for="card-answer">Answer <span>Hidden until revealed</span></label><textarea id="card-answer" maxlength="1000" rows="3" placeholder="Enter the answer…">${esc(card.answer)}</textarea><section class="media-editor"><label for="card-media">Media <span>Optional</span></label><input type="file" id="card-media" accept="${MEDIA_ACCEPT}" ${uploadingCards.has(card.id) ? "disabled" : ""}><p class="field-help">JPG, PNG, GIF, WebP, MP4, WebM, MP3, M4A, WAV, or OGG. Up to 50 MB.</p><p id="upload-progress" role="status">${uploadingCards.has(card.id) ? "Uploading…" : ""}</p>${card.media ? `<div class="media-preview">${card.media.type === "image" ? `<img src="${esc(card.media.url)}" alt="${esc(card.media.alt || "Clue image")}">` : `<${card.media.type} src="${esc(card.media.url)}" controls preload="metadata" ${card.media.type === "video" ? "playsinline" : ""}></${card.media.type}>`}<p>${esc(card.media.name)}</p><button class="text-button" data-action="remove-media">Remove media</button></div>${card.media.type === "image" ? `<label for="media-alt">Image description</label><input id="media-alt" maxlength="300" placeholder="Describe the picture" value="${esc(card.media.alt || "")}">` : ""}` : ""}</section><div class="card-editor-footer"><button class="text-button" data-action="clear-card" ${uploadingCards.has(card.id) ? "disabled" : ""}>Clear card</button><button data-action="next-card">Next card →</button></div>`;
 }
 async function uploadMedia(file: File) {
   if (!board || !selected || uploadingCards.has(selected)) return;
@@ -819,7 +827,7 @@ app.addEventListener("click", async (event) => {
         break;
       }
       case "clear-card":
-        if (confirm("Clear the clue and answer?")) {
+        if (confirm("Clear this card’s clue, answer, and media?")) {
           const card = board!.categories
             .flatMap((c) => c.cards)
             .find((c) => c.id === selected)!;
