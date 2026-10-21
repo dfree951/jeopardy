@@ -1,6 +1,7 @@
 import "./style.css";
 import {
   activeCard,
+  isCardReady,
   blankBoard,
   readyCards,
   uid,
@@ -10,6 +11,21 @@ import {
   type Game,
 } from "./model";
 import { sampleBoard } from "./sample";
+import { upload } from "@vercel/blob/client";
+import {
+  MAX_MEDIA_BYTES,
+  MEDIA_ACCEPT,
+  mediaKind,
+  type ClueMedia,
+} from "./media";
+import {
+  clueMedia,
+  preserveMedia,
+  syncMedia,
+  enablePlayback,
+  toggleMediaSound,
+} from "./media-view";
+const uploadingCards = new Set<string>();
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const apiOrigin = (import.meta.env.VITE_API_ORIGIN || "").replace(/\/$/, "");
@@ -142,12 +158,12 @@ function page(title: string, body: string, tools = "") {
   document.body.className = "";
   app.innerHTML = `<header class="site-header"><a class="wordmark" href="#library" aria-label="Jeopardy home">JEOPARDY<span>!</span></a><nav aria-label="Main navigation"><a href="#library" ${["library", "edit", "setup"].includes(view) ? 'aria-current="page"' : ""}>My games</a><a href="#join" ${view === "join" ? 'aria-current="page"' : ""}>Join a game</a></nav></header><main class="workspace"><div class="page-heading"><h1>${esc(title)}</h1><div class="actions">${tools}</div></div>${body}</main>`;
 }
-function persistBoard() {
-  if (!board) return;
-  board.updatedAt = new Date().toISOString();
-  boards = [board, ...boards.filter((b) => b.id !== board!.id)];
+function persistBoard(value = board) {
+  if (!value) return;
+  value.updatedAt = new Date().toISOString();
+  boards = [value, ...boards.filter((b) => b.id !== value.id)];
   store("jeopardy.boards", boards);
-  queueSave(board);
+  queueSave(value);
 }
 function saveDownload(board: Board) {
   const url = URL.createObjectURL(
@@ -233,7 +249,7 @@ function editor() {
     selected = board.categories[0].cards[0].id;
   page(
     "Edit game",
-    `<div class="editor-title"><label for="board-title">Game title</label><input id="board-title" maxlength="100" placeholder="Jeopardy" value="${esc(board.title)}"><div class="save-line"><span class="status-dot"></span><span id="save-state" role="status">Saving…</span></div></div><div class="editor-layout"><section class="board-editor" aria-label="Categories and cards"><div class="section-heading"><h2>Board</h2><span id="card-count">${readyCards(board).length} / ${board.categories.length * 5} cards ready</span></div><div class="edit-grid" style="--columns:${board.categories.length}">${board.categories.map((c, index) => `<div class="edit-category"><div class="category-name"><label class="sr-only" for="category-${index}">Category ${index + 1}</label><input id="category-${index}" data-category="${esc(c.id)}" maxlength="60" placeholder="Category ${index + 1}" value="${esc(c.name)}"><button class="remove-category" data-action="remove-category" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name.trim() || `Category ${index + 1}`)}" ${board!.categories.length === 1 ? "disabled" : ""}>×</button></div>${c.cards.map((card) => `<button class="edit-card ${card.id === selected ? "selected" : ""} ${card.clue.trim() && card.answer.trim() ? "complete" : ""}" data-action="edit-card" data-id="${esc(card.id)}" aria-pressed="${card.id === selected}" aria-label="${esc(c.name.trim() || `Category ${index + 1}`)}, ${money(card.value)}, ${card.clue.trim() && card.answer.trim() ? "ready" : "empty"}"><strong>${money(card.value)}</strong><span>${card.clue.trim() && card.answer.trim() ? "Ready" : "Add clue"}</span></button>`).join("")}</div>`).join("")}</div><button class="text-button add-category" data-action="add-category" ${board.categories.length >= 8 ? "disabled" : ""}>+ Add category</button></section><aside class="card-editor" id="card-editor"></aside></div><footer class="editor-footer"><p>Changes save automatically and appear in My games on every device.</p><button data-action="export">Export game</button></footer>`,
+    `<div class="editor-title"><label for="board-title">Game title</label><input id="board-title" maxlength="100" placeholder="Jeopardy" value="${esc(board.title)}"><div class="save-line"><span class="status-dot"></span><span id="save-state" role="status">Saving…</span></div></div><div class="editor-layout"><section class="board-editor" aria-label="Categories and cards"><div class="section-heading"><h2>Board</h2><span id="card-count">${readyCards(board).length} / ${board.categories.length * 5} cards ready</span></div><div class="edit-grid" style="--columns:${board.categories.length}">${board.categories.map((c, index) => `<div class="edit-category"><div class="category-name"><label class="sr-only" for="category-${index}">Category ${index + 1}</label><input id="category-${index}" data-category="${esc(c.id)}" maxlength="60" placeholder="Category ${index + 1}" value="${esc(c.name)}"><button class="remove-category" data-action="remove-category" data-id="${esc(c.id)}" aria-label="Remove ${esc(c.name.trim() || `Category ${index + 1}`)}" ${board!.categories.length === 1 ? "disabled" : ""}>×</button></div>${c.cards.map((card) => `<button class="edit-card ${card.id === selected ? "selected" : ""} ${isCardReady(card) ? "complete" : ""}" data-action="edit-card" data-id="${esc(card.id)}" aria-pressed="${card.id === selected}" aria-label="${esc(c.name.trim() || `Category ${index + 1}`)}, ${money(card.value)}, ${isCardReady(card) ? "ready" : "empty"}"><strong>${money(card.value)}</strong><span>${isCardReady(card) ? "Ready" : "Add clue"}</span></button>`).join("")}</div>`).join("")}</div><button class="text-button add-category" data-action="add-category" ${board.categories.length >= 8 ? "disabled" : ""}>+ Add category</button></section><aside class="card-editor" id="card-editor"></aside></div><footer class="editor-footer"><p>Changes save automatically and appear in My games on every device.</p><button data-action="export">Export game</button></footer>`,
     `<a class="button" href="#library">Done</a><button data-action="share-edit">Share edit link</button><a class="button primary" href="#setup/${esc(board.id)}">Play game →</a>`,
   );
   renderCardEditor();
@@ -246,7 +262,89 @@ function renderCardEditor() {
   const card = category?.cards.find((c) => c.id === selected);
   if (!card) return;
   document.querySelector("#card-editor")!.innerHTML =
-    `<div class="section-heading"><h2>Card details</h2><span>${esc(category!.name.trim() || `Category ${board!.categories.indexOf(category!) + 1}`)}</span></div><label for="card-value">Value</label><div class="value-input"><span>$</span><input type="number" id="card-value" min="1" max="100000" step="1" value="${card.value}"></div><label for="card-clue">Clue <span>Shown to players</span></label><textarea id="card-clue" maxlength="2000" rows="6" placeholder="Enter the clue…">${esc(card.clue)}</textarea><label for="card-answer">Answer <span>Hidden until revealed</span></label><textarea id="card-answer" maxlength="1000" rows="3" placeholder="Enter the answer…">${esc(card.answer)}</textarea><div class="card-editor-footer"><button class="text-button" data-action="clear-card">Clear card</button><button data-action="next-card">Next card →</button></div>`;
+    `<div class="section-heading"><h2>Card details</h2><span>${esc(category!.name.trim() || `Category ${board!.categories.indexOf(category!) + 1}`)}</span></div><label for="card-value">Value</label><div class="value-input"><span>$</span><input type="number" id="card-value" min="1" max="100000" step="1" value="${card.value}"></div><label for="card-clue">Clue <span>Shown to players</span></label><textarea id="card-clue" maxlength="2000" rows="6" placeholder="Enter the clue…">${esc(card.clue)}</textarea><label for="card-answer">Answer <span>Hidden until revealed</span></label><textarea id="card-answer" maxlength="1000" rows="3" placeholder="Enter the answer…">${esc(card.answer)}</textarea><section class="media-editor"><label for="card-media">Media <span>Optional</span></label><input type="file" id="card-media" accept="${MEDIA_ACCEPT}" ${uploadingCards.has(card.id) ? "disabled" : ""}><p class="field-help">JPG, PNG, GIF, WebP, MP4, WebM, MP3, M4A, WAV, or OGG. Up to 50 MB.</p><p id="upload-progress" role="status">${uploadingCards.has(card.id) ? "Uploading…" : ""}</p>${card.media ? `<div class="media-preview">${card.media.type === "image" ? `<img src="${esc(card.media.url)}" alt="${esc(card.media.alt || "Clue image")}">` : `<${card.media.type} src="${esc(card.media.url)}" controls preload="metadata" ${card.media.type === "video" ? "playsinline" : ""}></${card.media.type}>`}<p>${esc(card.media.name)}</p><button class="text-button" data-action="remove-media">Remove media</button></div>${card.media.type === "image" ? `<label for="media-alt">Image description</label><input id="media-alt" maxlength="300" placeholder="Describe the picture" value="${esc(card.media.alt || "")}">` : ""}` : ""}</section><div class="card-editor-footer"><button class="text-button" data-action="clear-card">Clear card</button><button data-action="next-card">Next card →</button></div>`;
+}
+async function uploadMedia(file: File) {
+  if (!board || !selected || uploadingCards.has(selected)) return;
+  const type = mediaKind(file.type);
+  if (!type || file.size < 1 || file.size > MAX_MEDIA_BYTES) {
+    toast("Choose a supported image, video, or audio file under 50 MB.", true);
+    return;
+  }
+  const targetBoard = board;
+  const targetCard = board.categories
+    .flatMap((c) => c.cards)
+    .find((c) => c.id === selected)!;
+  uploadingCards.add(targetCard.id);
+  renderCardEditor();
+  try {
+    persistBoard(targetBoard);
+    await flushSaves();
+    if (pendingSaves.has(targetBoard.id))
+      throw new Error("Wait for this board to save before uploading.");
+    const extensions: Record<string, string> = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/gif": "gif",
+      "image/webp": "webp",
+      "video/mp4": "mp4",
+      "video/webm": "webm",
+      "audio/mpeg": "mp3",
+      "audio/mp4": "m4a",
+      "audio/wav": "wav",
+      "audio/ogg": "ogg",
+      "audio/webm": "webm",
+    };
+    const blob = await upload(
+      `jeopardy/${uid()}.${extensions[file.type]}`,
+      file,
+      {
+        access: "public",
+        contentType: file.type,
+        handleUploadUrl: `${apiOrigin}/api/media`,
+        clientPayload: JSON.stringify({
+          boardId: targetBoard.id,
+          cardId: targetCard.id,
+        }),
+        multipart: file.size > 4 * 1024 * 1024,
+        onUploadProgress: (progress) => {
+          const label = document.querySelector("#upload-progress");
+          if (
+            view === "edit" &&
+            board?.id === targetBoard.id &&
+            selected === targetCard.id &&
+            label
+          )
+            label.textContent = `Uploading… ${Math.round(progress.percentage)}%`;
+        },
+      },
+    );
+    if (
+      !targetBoard.categories.some((c) =>
+        c.cards.some((card) => card.id === targetCard.id),
+      )
+    )
+      return;
+    targetCard.media = {
+      url: blob.url,
+      type,
+      contentType: file.type,
+      name: file.name.slice(0, 250),
+      size: file.size,
+    } satisfies ClueMedia;
+    persistBoard(targetBoard);
+    toast("Media uploaded.");
+  } catch (error) {
+    toast((error as Error).message || "Upload failed. Try again.", true);
+  } finally {
+    uploadingCards.delete(targetCard.id);
+    if (
+      view === "edit" &&
+      board?.id === targetBoard.id &&
+      selected === targetCard.id
+    )
+      editor();
+  }
 }
 function setup() {
   if (!board) return;
@@ -263,7 +361,7 @@ function join(code = "") {
 }
 function roomShell(content: string) {
   document.body.className = "game-theme";
-  app.innerHTML = content;
+  preserveMedia(content, app);
 }
 function boardGrid(g: Game, clickable: boolean) {
   return `<div class="board-scroll"><div class="play-board" style="--columns:${g.categories.length}">${g.categories.map((c) => `<div class="play-category"><h2>${esc(c.name)}</h2>${c.cards.map((card) => `<button class="play-card ${g.used.includes(card.id) ? "used" : ""}" data-action="select" data-id="${esc(card.id)}" ${!clickable || g.used.includes(card.id) ? "disabled" : ""} aria-label="${esc(c.name)}, ${money(card.value)}${g.used.includes(card.id) ? ", used" : ""}">${g.used.includes(card.id) ? '<span class="sr-only">Used</span>' : money(card.value)}</button>`).join("")}</div>`).join("")}</div></div>`;
@@ -302,15 +400,16 @@ function renderGame() {
                 : "Game over"
             } ${g.players.length && g.players.filter((p) => p.score === Math.max(...g.players.map((p) => p.score))).length > 1 ? "tie!" : "wins!"}</h1>${scores(g)}${host ? '<a class="button gold" href="#library">Back to my games</a>' : ""}</section>`
           : card
-            ? `<section class="clue-view"><div class="clue-meta">${esc(category?.name)} <span>•</span> ${money(card.value)}</div><h1 class="clue-text">${esc(card.clue)}</h1>${g.revealed ? `<div class="answer"><span>ANSWER</span><p>${esc(card.answer)}</p></div>` : ""}${g.buzzed ? `<p class="buzz-announcement" role="status">${esc(g.players.find((p) => p.id === g.buzzed)?.name)} buzzed in</p>` : g.buzzOpen ? '<p class="buzz-announcement">Buzzers open</p>' : ""}</section>`
+            ? `<section class="clue-view"><div class="clue-meta">${esc(category?.name)} <span>•</span> ${money(card.value)}</div><h1 class="clue-text">${esc(card.clue || "Media clue")}</h1>${clueMedia(g, card)}${g.revealed ? `<div class="answer"><span>ANSWER</span><p>${esc(card.answer)}</p></div>` : ""}${g.buzzed ? `<p class="buzz-announcement" role="status">${esc(g.players.find((p) => p.id === g.buzzed)?.name)} buzzed in</p>` : g.buzzOpen ? '<p class="buzz-announcement">Buzzers open</p>' : ""}</section>`
             : boardGrid(g, host)
     }${g.status === "playing" ? scores(g) : ""}${host ? hostControls(g, card) : ""}</main><div class="connection-status" id="connection-status" role="status">Connected${display ? " · Player view" : ""}</div>`,
   );
+  syncMedia(g);
 }
 function hostControls(g: Game, card: Card | undefined) {
   return `<section class="host-controls" aria-label="Host controls">${
     card
-      ? `<div class="clue-actions">${!g.revealed ? '<button data-action="reveal">Reveal answer</button>' : ""}${g.mode === "buzzer" && !g.revealed ? `<button class="gold" data-action="${g.buzzOpen ? "close" : "open"}">${g.buzzOpen ? "Close buzzers" : "Open buzzers"}</button>` : ""}<button data-action="finish-card">Skip / back to board</button></div><div class="scoring-controls">${g.players
+      ? `<div class="clue-actions">${!g.revealed ? '<button data-action="reveal">Reveal answer</button>' : ""}${g.mode === "buzzer" && !g.revealed ? `<button class="gold" data-action="${g.buzzOpen ? "close" : "open"}">${g.buzzOpen ? "Close buzzers" : "Open buzzers"}</button>` : ""}<button data-action="finish-card">Skip / back to board</button></div>${card.media ? `<div class="host-media-controls" aria-label="Media controls"><span>${card.media.type === "image" ? "Picture" : card.media.type === "video" ? "Video" : "Audio"}</span>${card.media.type === "image" ? `<button data-action="media-show">${g.mediaPlayback?.visible ? "Hide picture" : "Show picture"}</button>` : `<button class="gold" data-action="media-play">${g.mediaPlayback?.playing ? "Pause" : "Play"} ${card.media.type}</button><button data-action="media-replay">Replay from start</button>${g.mediaPlayback?.visible ? '<button data-action="media-hide">Hide media</button>' : ""}`}</div>` : ""}<div class="scoring-controls">${g.players
           .filter((p) => g.mode === "screen" || p.id === g.buzzed)
           .map(
             (p) =>
@@ -353,8 +452,9 @@ function renderPlayer() {
     return;
   }
   roomShell(
-    `<header class="game-header"><span class="wordmark">JEOPARDY<span>!</span></span><span class="room-label">ROOM <b>${esc(g.code)}</b></span></header><main class="player-main"><p class="eyebrow">${esc(player?.name || "Player")}</p><div class="player-score">${money(player?.score || 0)}</div>${g.status === "finished" ? `<h1>Game over</h1>${scores(g)}` : g.status === "lobby" ? `<h1>You’re in.</h1><p>Waiting for the host to start.</p>` : `<div class="player-clue">${card ? `<span>${money(card.value)}</span><h1>${esc(card.clue)}</h1>${g.revealed ? `<p class="player-answer">${esc(card.answer)}</p>` : ""}` : "<h1>Choose the next clue on the board.</h1>"}</div><button class="buzzer ${g.buzzed === playerId ? "first" : ""}" data-action="buzz" ${canBuzz ? "" : "disabled"}>${g.buzzed === playerId ? "YOU’RE UP" : canBuzz ? "BUZZ IN" : g.attempted.includes(playerId) && card ? "ANSWERED" : "WAIT"}</button><p role="status">${g.buzzed ? esc(g.players.find((p) => p.id === g.buzzed)?.name) + " buzzed in" : canBuzz ? "Buzzers are open." : "Watch for the host to open the buzzers."}</p>`}</main><div class="connection-status" id="connection-status" role="status">Connected</div>`,
+    `<header class="game-header"><span class="wordmark">JEOPARDY<span>!</span></span><span class="room-label">ROOM <b>${esc(g.code)}</b></span></header><main class="player-main"><p class="eyebrow">${esc(player?.name || "Player")}</p><div class="player-score">${money(player?.score || 0)}</div>${g.status === "finished" ? `<h1>Game over</h1>${scores(g)}` : g.status === "lobby" ? `<h1>You’re in.</h1><p>Waiting for the host to start.</p>` : `<div class="player-clue">${card ? `<span>${money(card.value)}</span><h1>${esc(card.clue || "Media clue")}</h1>${clueMedia(g, card)}${g.revealed ? `<p class="player-answer">${esc(card.answer)}</p>` : ""}` : "<h1>Choose the next clue on the board.</h1>"}</div><button class="buzzer ${g.buzzed === playerId ? "first" : ""}" data-action="buzz" ${canBuzz ? "" : "disabled"}>${g.buzzed === playerId ? "YOU’RE UP" : canBuzz ? "BUZZ IN" : g.attempted.includes(playerId) && card ? "ANSWERED" : "WAIT"}</button><p role="status">${g.buzzed ? esc(g.players.find((p) => p.id === g.buzzed)?.name) + " buzzed in" : canBuzz ? "Buzzers are open." : "Watch for the host to open the buzzers."}</p>`}</main><div class="connection-status" id="connection-status" role="status">Connected</div>`,
   );
+  syncMedia(g);
 }
 async function refreshRoom(force = false) {
   if (!game || pollInFlight) return;
@@ -525,12 +625,14 @@ app.addEventListener("input", (event) => {
     if (card) {
       if (target.id === "card-clue") card.clue = target.value;
       if (target.id === "card-answer") card.answer = target.value;
+      if (target.id === "media-alt" && card.media)
+        card.media.alt = target.value;
       if (target.id === "card-value") card.value = Number(target.value);
       const button = Array.from(
         document.querySelectorAll<HTMLButtonElement>(".edit-card"),
       ).find((b) => b.dataset.id === selected);
       if (button) {
-        const ready = !!(card.clue.trim() && card.answer.trim());
+        const ready = isCardReady(card);
         button.classList.toggle("complete", ready);
         button.querySelector("strong")!.textContent = money(card.value);
         button.querySelector("span")!.textContent = ready
@@ -546,6 +648,10 @@ app.addEventListener("input", (event) => {
 });
 app.addEventListener("change", (event) => {
   const target = event.target as HTMLInputElement;
+  if (target.id === "card-media" && target.files?.[0]) {
+    void uploadMedia(target.files[0]);
+    return;
+  }
   if (view === "setup" && ["mode", "format"].includes(target.name)) {
     const form = document.querySelector<HTMLFormElement>("#setup-form")!;
     const data = new FormData(form);
@@ -640,6 +746,37 @@ app.addEventListener("click", async (event) => {
       case "refresh-library":
         if (!libraryLoading) await loadLibrary();
         break;
+      case "media-sound":
+        toggleMediaSound();
+        break;
+      case "allow-playback":
+        enablePlayback();
+        break;
+      case "media-show":
+        await action("media", {
+          command: game!.mediaPlayback?.visible ? "hide" : "show",
+        });
+        break;
+      case "media-play":
+        await action("media", {
+          command: game!.mediaPlayback?.playing ? "pause" : "play",
+        });
+        break;
+      case "media-replay":
+        await action("media", { command: "replay" });
+        break;
+      case "media-hide":
+        await action("media", { command: "hide" });
+        break;
+      case "remove-media": {
+        const card = board!.categories
+          .flatMap((c) => c.cards)
+          .find((c) => c.id === selected)!;
+        delete card.media;
+        persistBoard();
+        editor();
+        break;
+      }
       case "new":
         board = blankBoard();
         persistBoard();
@@ -688,6 +825,7 @@ app.addEventListener("click", async (event) => {
             .find((c) => c.id === selected)!;
           card.clue = "";
           card.answer = "";
+          delete card.media;
           persistBoard();
           editor();
         }

@@ -3,6 +3,8 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { neon } from "@neondatabase/serverless";
 import { publicGame, validateBoard, type Game } from "../src/model.js";
 import { buzz, createGame, hostAction } from "../server/game.js";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { MAX_MEDIA_BYTES, MEDIA_TYPES } from "../src/media.js";
 
 let initialized: Promise<void> | undefined;
 function database() {
@@ -90,6 +92,47 @@ export default async function handler(req: Request, res: ServerResponse) {
         send(413, { error: "This board is too large." });
         return;
       }
+    }
+    if (parts[0] === "media" && req.method === "POST") {
+      if (!process.env.BLOB_READ_WRITE_TOKEN)
+        throw new Error("Media uploads are not configured.");
+      const result = await handleUpload({
+        request: req,
+        body: body as HandleUploadBody,
+        onBeforeGenerateToken: async (pathname, clientPayload) => {
+          if (
+            !/^jeopardy\/[a-f0-9-]{36}\.(jpg|png|gif|webp|mp4|webm|mp3|m4a|wav|ogg)$/.test(
+              pathname,
+            )
+          )
+            throw new Error("Invalid upload path.");
+          const payload = JSON.parse(clientPayload || "{}");
+          if (
+            typeof payload.boardId !== "string" ||
+            typeof payload.cardId !== "string"
+          )
+            throw new Error("Choose a clue before uploading.");
+          const rows =
+            await sql`SELECT board FROM jeopardy_boards WHERE id = ${payload.boardId} AND archived_at IS NULL`;
+          if (
+            !rows.length ||
+            !rows[0].board.categories.some(
+              (category: { cards: { id: string }[] }) =>
+                category.cards.some((card) => card.id === payload.cardId),
+            )
+          )
+            throw new Error("Save this clue before uploading.");
+          return {
+            allowedContentTypes: [...Object.values(MEDIA_TYPES).flat()],
+            maximumSizeInBytes: MAX_MEDIA_BYTES,
+            addRandomSuffix: true,
+            allowOverwrite: false,
+            validUntil: Date.now() + 15 * 60 * 1000,
+          };
+        },
+      });
+      send(200, result);
+      return;
     }
     if (parts[0] === "boards") {
       const id = parts[1];

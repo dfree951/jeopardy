@@ -1,10 +1,12 @@
 import {
   activeCard,
+  isCardReady,
   readyCards,
   validateBoard,
   type Board,
   type Game,
 } from "../src/model.js";
+import { playbackPosition } from "../src/media.js";
 import { randomUUID } from "node:crypto";
 
 export function createGame(
@@ -43,7 +45,7 @@ export function createGame(
     players: clean.map((name) => ({ id: randomUUID(), name, score: 0 })),
     used: board.categories
       .flatMap((c) => c.cards)
-      .filter((c) => !c.clue.trim() || !c.answer.trim())
+      .filter((c) => !isCardReady(c))
       .map((c) => c.id),
     active: null,
     revealed: false,
@@ -84,6 +86,34 @@ export function hostAction(game: Game, action: Record<string, unknown>): Game {
       g.revealed = true;
       g.buzzOpen = false;
       break;
+    case "media": {
+      if (g.status !== "playing" || !card?.media)
+        throw new Error("This clue has no media.");
+      const previous = g.mediaPlayback;
+      const now = Date.now();
+      const command = action.command;
+      if (
+        !["show", "hide", "play", "pause", "replay"].includes(command as string)
+      )
+        throw new Error("Unknown media control.");
+      if (
+        card.media.type === "image" &&
+        !["show", "hide"].includes(command as string)
+      )
+        throw new Error("Images can be shown or hidden.");
+      g.mediaPlayback = {
+        visible: command !== "hide",
+        playing: command === "play" || command === "replay",
+        position:
+          command === "replay" || command === "hide"
+            ? 0
+            : previous
+              ? playbackPosition(previous, now)
+              : 0,
+        changedAt: now,
+      };
+      break;
+    }
     case "open":
       if (!card || g.revealed || g.mode !== "buzzer")
         throw new Error("Buzzers are unavailable.");
@@ -155,6 +185,12 @@ export function hostAction(game: Game, action: Record<string, unknown>): Game {
     default:
       throw new Error("Unknown action.");
   }
+  if (
+    g.active !== game.active ||
+    action.type === "undo" ||
+    g.status === "finished"
+  )
+    g.mediaPlayback = undefined;
   if (
     g.status === "playing" &&
     g.categories.every((c) => c.cards.every((c) => g.used.includes(c.id)))

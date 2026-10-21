@@ -1,4 +1,11 @@
-export type Card = { id: string; value: number; clue: string; answer: string };
+import { validateMedia, type ClueMedia, type MediaPlayback } from "./media.js";
+export type Card = {
+  id: string;
+  value: number;
+  clue: string;
+  answer: string;
+  media?: ClueMedia;
+};
 export type Category = { id: string; name: string; cards: Card[] };
 export type Board = {
   id: string;
@@ -28,6 +35,7 @@ export type Game = {
   attempted: string[];
   status: "lobby" | "playing" | "finished";
   version: number;
+  mediaPlayback?: MediaPlayback;
   history: {
     players: Player[];
     used: string[];
@@ -99,16 +107,18 @@ export function validateBoard(input: unknown, draft = false): Board {
       )
         throw new Error("Check card values and text lengths.");
       ids.add(card.id);
-      if (!draft && !!card.clue.trim() !== !!card.answer.trim())
+      if (card.media) validateMedia(card.media);
+      if (!draft && !!(card.clue.trim() || card.media) !== !!card.answer.trim())
         throw new Error("Add both a clue and an answer, or leave both blank.");
     }
   }
   return b;
 }
 export function readyCards(board: Board) {
-  return board.categories
-    .flatMap((c) => c.cards)
-    .filter((c) => c.clue.trim() && c.answer.trim());
+  return board.categories.flatMap((c) => c.cards).filter(isCardReady);
+}
+export function isCardReady(card: Card) {
+  return !!(card.answer.trim() && (card.clue.trim() || card.media));
 }
 export function activeCard(game: Game) {
   return game.categories
@@ -124,6 +134,10 @@ export function publicGame(game: Game): Game {
         ...card,
         clue: card.id === game.active ? card.clue : "",
         answer: card.id === game.active && game.revealed ? card.answer : "",
+        media:
+          card.id === game.active && game.mediaPlayback?.visible
+            ? card.media && { ...card.media, name: "Clue media" }
+            : undefined,
       })),
     })),
     players: game.players.map(({ token, ...player }) => ({

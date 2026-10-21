@@ -6,9 +6,13 @@ Create a board and play with teams or individuals. Use a shared screen, or let p
 
 The host selects clues, reveals answers, and keeps score. My games loads the shared boards from the database on every device. Edits save automatically, with a device copy kept if the connection drops. Boards can also be exported as JSON.
 
+Cards can optionally include a picture, video, or audio clip up to 50 MB. Uploads are stored in Vercel Blob. The host chooses when to show them and can pause or replay clips. Player screens may need one click to enable sound.
+
 ## Development
 
 Run `npm install`, then `npm run dev` for the frontend. Use `vercel dev` to run the API too. Add a Postgres connection as `DATABASE_URL` in `.env.local`.
+
+Connect a public Vercel Blob store and set `BLOB_READ_WRITE_TOKEN` for media uploads.
 
 `npm test` checks the game rules. `npm run build` builds the app.
 

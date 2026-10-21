@@ -13,7 +13,8 @@
     "format": "prettier --write src server api tests scripts README.md PRODUCT.md DESIGN.md index.html *.json .github"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2"
+    "@neondatabase/serverless": "^1.0.2",
+    "@vercel/blob": "^2.8.2"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",

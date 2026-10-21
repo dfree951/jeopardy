@@ -1371,3 +1371,132 @@ legend {
     scroll-behavior: auto !important;
   }
 }
+[hidden] {
+  display: none !important;
+}
+.media-editor {
+  margin-top: 24px;
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+}
+.media-editor input[type="file"] {
+  padding: 8px;
+  font-size: 11px;
+}
+.media-editor input[type="file"]::file-selector-button {
+  border: 1px solid #cdd0d7;
+  border-radius: 4px;
+  background: #eceff6;
+  padding: 7px 9px;
+  margin-right: 8px;
+  color: #20232b;
+  cursor: pointer;
+}
+.media-editor #upload-progress {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0;
+}
+.media-preview img,
+.media-preview video {
+  display: block;
+  width: 100%;
+  max-height: 190px;
+  object-fit: contain;
+  background: #e9ecf4;
+  border-radius: 4px;
+}
+.media-preview audio {
+  width: 100%;
+}
+.media-preview p {
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  margin: 8px 0 2px;
+}
+.game-media {
+  width: min(760px, 100%);
+  margin: 6px auto;
+}
+.game-media img,
+.game-media video {
+  display: block;
+  width: 100%;
+  max-height: 42vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.game-media video {
+  background: #0b1035;
+}
+.media-local-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.media-local-controls button {
+  font-size: 11px;
+  min-height: 34px;
+  padding: 7px 12px;
+}
+.media-playback-label {
+  font-size: 11px;
+  color: #d2daf0;
+}
+.media-notice {
+  font-size: 13px;
+  margin: 12px auto;
+  color: #f3ca77;
+}
+.audio-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 22px;
+  font-size: 52px;
+  color: #f3ca77;
+}
+.audio-caption span {
+  font-size: 16px;
+  color: #edf1ff;
+}
+.clue-view:has(.game-media) {
+  gap: 15px;
+}
+.clue-view:has(.game-media) .clue-text {
+  font-size: clamp(26px, 2.8vw, 46px);
+  max-width: 42ch;
+}
+.host-media-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 15px 0;
+  margin-bottom: 18px;
+  border-top: 1px solid #303a5d;
+  border-bottom: 1px solid #303a5d;
+}
+.host-media-controls > span {
+  color: #b7c2e1;
+  font-size: 12px;
+  margin-right: 8px;
+}
+.host-media-controls button {
+  font-size: 12px;
+}
+@media (max-width: 520px) {
+  .game-media img,
+  .game-media video {
+    max-height: 30vh;
+  }
+  .host-media-controls {
+    gap: 7px;
+  }
+}
