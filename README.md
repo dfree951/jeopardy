@@ -10,6 +10,8 @@ Cards can optionally include a picture, video, or audio clip up to 50 MB. Upload
 
 Attachments display when a clue opens unless “Display by default” is unchecked. Video and audio stay paused until the host presses Play.
 
+Source MP3 searches Internet Archive recordings and trims audio to a clip of up to two minutes. It also accepts audio or video files from your device. YouTube links are not supported. The trimmed MP3 saves with the clue.
+
 ## Development
 
 Run `npm install`, then `npm run dev` for the frontend. Use `vercel dev` to run the API too. Add a Postgres connection as `DATABASE_URL` in `.env.local`.

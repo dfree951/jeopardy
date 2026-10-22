@@ -13,6 +13,7 @@
     "format": "prettier --write src server api tests scripts README.md PRODUCT.md DESIGN.md index.html *.json .github"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@neondatabase/serverless": "^1.0.2",
     "@vercel/blob": "^2.8.2"
   },

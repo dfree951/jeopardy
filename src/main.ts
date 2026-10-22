@@ -1,4 +1,5 @@
 import "./style.css";
+import { openAudioSource } from "./audio-source";
 import {
   activeCard,
   isCardReady,
@@ -270,14 +271,14 @@ function renderCardEditor() {
   const card = category?.cards.find((c) => c.id === selected);
   if (!card) return;
   document.querySelector("#card-editor")!.innerHTML =
-    `<div class="section-heading"><h2>Card details</h2><span>${esc(category!.name.trim() || `Category ${board!.categories.indexOf(category!) + 1}`)}</span></div><label for="card-value">Value</label><div class="value-input"><span>$</span><input type="number" id="card-value" min="1" max="100000" step="1" value="${card.value}"></div><label for="card-clue">Clue <span>Shown to players</span></label><textarea id="card-clue" maxlength="2000" rows="6" placeholder="Enter the clue…">${esc(card.clue)}</textarea><label for="card-answer">Answer <span>Hidden until revealed</span></label><textarea id="card-answer" maxlength="1000" rows="3" placeholder="Enter the answer…">${esc(card.answer)}</textarea><section class="media-editor"><label for="card-media">Media <span>Optional</span></label><input type="file" id="card-media" accept="${MEDIA_ACCEPT}" ${uploadingCards.has(card.id) ? "disabled" : ""}><p class="field-help">JPG, PNG, GIF, WebP, MP4, WebM, MP3, M4A, WAV, or OGG. Up to 50 MB.</p><p id="upload-progress" role="status">${uploadingCards.has(card.id) ? "Uploading…" : ""}</p>${card.media ? `<label class="media-default" for="media-default"><input type="checkbox" id="media-default" ${card.media.displayByDefault !== false ? "checked" : ""}>Display by default</label><p class="field-help">Video and audio stay paused until the host presses Play.</p><div class="media-preview">${card.media.type === "image" ? `<img src="${esc(card.media.url)}" alt="${esc(card.media.alt || "Clue image")}">` : `<${card.media.type} src="${esc(card.media.url)}" controls preload="metadata" ${card.media.type === "video" ? "playsinline" : ""}></${card.media.type}>`}<p>${esc(card.media.name)}</p><button class="text-button" data-action="remove-media">Remove media</button></div>${card.media.type === "image" ? `<label for="media-alt">Image description</label><input id="media-alt" maxlength="300" placeholder="Describe the picture" value="${esc(card.media.alt || "")}">` : ""}` : ""}</section><div class="card-editor-footer"><button class="text-button" data-action="clear-card" ${uploadingCards.has(card.id) ? "disabled" : ""}>Clear card</button><button data-action="next-card">Next card →</button></div>`;
+    `<div class="section-heading"><h2>Card details</h2><span>${esc(category!.name.trim() || `Category ${board!.categories.indexOf(category!) + 1}`)}</span></div><label for="card-value">Value</label><div class="value-input"><span>$</span><input type="number" id="card-value" min="1" max="100000" step="1" value="${card.value}"></div><label for="card-clue">Clue <span>Shown to players</span></label><textarea id="card-clue" maxlength="2000" rows="6" placeholder="Enter the clue…">${esc(card.clue)}</textarea><label for="card-answer">Answer <span>Hidden until revealed</span></label><textarea id="card-answer" maxlength="1000" rows="3" placeholder="Enter the answer…">${esc(card.answer)}</textarea><section class="media-editor"><label for="card-media">Media <span>Optional</span></label><input type="file" id="card-media" accept="${MEDIA_ACCEPT}" ${uploadingCards.has(card.id) ? "disabled" : ""}><button type="button" class="source-mp3-button" data-action="source-mp3" ${uploadingCards.has(card.id) ? "disabled" : ""}>Source MP3</button><p class="field-help">JPG, PNG, GIF, WebP, MP4, WebM, MP3, M4A, WAV, or OGG. Up to 50 MB.</p><p id="upload-progress" role="status">${uploadingCards.has(card.id) ? "Uploading…" : ""}</p>${card.media ? `<label class="media-default" for="media-default"><input type="checkbox" id="media-default" ${card.media.displayByDefault !== false ? "checked" : ""}>Display by default</label><p class="field-help">Video and audio stay paused until the host presses Play.</p><div class="media-preview">${card.media.type === "image" ? `<img src="${esc(card.media.url)}" alt="${esc(card.media.alt || "Clue image")}">` : `<${card.media.type} src="${esc(card.media.url)}" controls preload="metadata" ${card.media.type === "video" ? "playsinline" : ""}></${card.media.type}>`}<p>${esc(card.media.name)}</p><button class="text-button" data-action="remove-media">Remove media</button></div>${card.media.type === "image" ? `<label for="media-alt">Image description</label><input id="media-alt" maxlength="300" placeholder="Describe the picture" value="${esc(card.media.alt || "")}">` : ""}` : ""}</section><div class="card-editor-footer"><button class="text-button" data-action="clear-card" ${uploadingCards.has(card.id) ? "disabled" : ""}>Clear card</button><button data-action="next-card">Next card →</button></div>`;
 }
 async function uploadMedia(file: File) {
-  if (!board || !selected || uploadingCards.has(selected)) return;
+  if (!board || !selected || uploadingCards.has(selected)) return false;
   const type = mediaKind(file.type);
   if (!type || file.size < 1 || file.size > MAX_MEDIA_BYTES) {
     toast("Choose a supported image, video, or audio file under 50 MB.", true);
-    return;
+    return false;
   }
   const targetBoard = board;
   const targetCard = board.categories
@@ -343,8 +344,10 @@ async function uploadMedia(file: File) {
     } satisfies ClueMedia;
     persistBoard(targetBoard);
     toast("Media uploaded.");
+    return true;
   } catch (error) {
     toast((error as Error).message || "Upload failed. Try again.", true);
+    return false;
   } finally {
     uploadingCards.delete(targetCard.id);
     if (
@@ -754,6 +757,15 @@ app.addEventListener("click", async (event) => {
   busy = true;
   try {
     switch (name) {
+      case "source-mp3": {
+        const boardId = board?.id;
+        const cardId = selected;
+        openAudioSource(apiOrigin, async (file) => {
+          if (board?.id !== boardId || selected !== cardId) return false;
+          return (await uploadMedia(file)) === true;
+        });
+        break;
+      }
       case "refresh-library":
         if (!libraryLoading) await loadLibrary();
         break;

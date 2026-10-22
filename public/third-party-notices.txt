@@ -1,0 +1,9 @@
+Third-party audio encoder
+
+Source MP3 uses LAME through @breezystack/lamejs 1.2.7 (unmodified), licensed under LGPL-3.0.
+LAME: https://lame.sourceforge.io/
+JavaScript source: https://github.com/zhuker/lamejs
+Package source: https://github.com/shijinyu/lamejs
+Package: https://www.npmjs.com/package/@breezystack/lamejs/v/1.2.7
+License: https://www.gnu.org/licenses/lgpl-3.0.html
+Additional license information: licenses/lamejs.txt

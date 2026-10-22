@@ -5,6 +5,7 @@ import { publicGame, validateBoard, type Game } from "../src/model.js";
 import { buzz, createGame, hostAction } from "../server/game.js";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { MAX_MEDIA_BYTES, MEDIA_TYPES } from "../src/media.js";
+import { searchAudio, audioFiles } from "../server/audio-sources.js";
 
 let initialized: Promise<void> | undefined;
 function database() {
@@ -92,6 +93,15 @@ export default async function handler(req: Request, res: ServerResponse) {
         send(413, { error: "This board is too large." });
         return;
       }
+    }
+    if (parts[0] === "audio-sources" && req.method === "GET") {
+      send(
+        200,
+        url.searchParams.has("id")
+          ? await audioFiles(url.searchParams.get("id") || "")
+          : await searchAudio(url.searchParams.get("q") || ""),
+      );
+      return;
     }
     if (parts[0] === "media" && req.method === "POST") {
       if (!process.env.BLOB_READ_WRITE_TOKEN)
