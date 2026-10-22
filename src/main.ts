@@ -758,12 +758,21 @@ app.addEventListener("click", async (event) => {
   try {
     switch (name) {
       case "source-mp3": {
-        const boardId = board?.id;
+        if (!board || !selected) break;
+        const boardId = board.id;
         const cardId = selected;
-        openAudioSource(apiOrigin, async (file) => {
-          if (board?.id !== boardId || selected !== cardId) return false;
-          return (await uploadMedia(file)) === true;
-        });
+        persistBoard();
+        await flushSaves();
+        if (pendingSaves.has(boardId))
+          throw new Error("Wait for this board to save before sourcing audio.");
+        openAudioSource(
+          apiOrigin,
+          async (file) => {
+            if (board?.id !== boardId || selected !== cardId) return false;
+            return (await uploadMedia(file)) === true;
+          },
+          { boardId, cardId },
+        );
         break;
       }
       case "refresh-library":

@@ -6,6 +6,12 @@ import { buzz, createGame, hostAction } from "../server/game.js";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { MAX_MEDIA_BYTES, MEDIA_TYPES } from "../src/media.js";
 import { searchAudio, audioFiles } from "../server/audio-sources.js";
+import {
+  searchYouTube,
+  convertYouTube,
+  SOURCE_CREDIT_LIMIT,
+  CONVERSION_CREDITS,
+} from "../server/youtube.js";
 
 let initialized: Promise<void> | undefined;
 function database() {
@@ -20,6 +26,9 @@ async function init() {
   await sql`CREATE TABLE IF NOT EXISTS jeopardy_boards (id text PRIMARY KEY, secret text NOT NULL, board jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
   await sql`ALTER TABLE jeopardy_boards ADD COLUMN IF NOT EXISTS archived_at timestamptz`;
   await sql`CREATE TABLE IF NOT EXISTS jeopardy_games (code text PRIMARY KEY, host_token text NOT NULL, state jsonb NOT NULL, version integer NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`CREATE TABLE IF NOT EXISTS jeopardy_audio_sources (video_id text PRIMARY KEY, source jsonb, lease text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`CREATE TABLE IF NOT EXISTS jeopardy_source_budget (id text PRIMARY KEY, reserved_credits integer NOT NULL DEFAULT 0 CHECK (reserved_credits BETWEEN 0 AND 1000), last_request_at timestamptz)`;
+  await sql`INSERT INTO jeopardy_source_budget (id) VALUES ('youtube') ON CONFLICT DO NOTHING`;
 }
 function same(a: string, b: string) {
   const left = Buffer.from(a);
@@ -97,10 +106,77 @@ export default async function handler(req: Request, res: ServerResponse) {
     if (parts[0] === "audio-sources" && req.method === "GET") {
       send(
         200,
-        url.searchParams.has("id")
-          ? await audioFiles(url.searchParams.get("id") || "")
-          : await searchAudio(url.searchParams.get("q") || ""),
+        url.searchParams.get("provider") === "youtube"
+          ? await searchYouTube(url.searchParams.get("q") || "")
+          : url.searchParams.has("id")
+            ? await audioFiles(url.searchParams.get("id") || "")
+            : await searchAudio(url.searchParams.get("q") || ""),
       );
+      return;
+    }
+    if (
+      parts[0] === "audio-sources" &&
+      parts[1] === "convert" &&
+      req.method === "POST"
+    ) {
+      if (!process.env.SAVEAPI_KEY)
+        throw new Error("YouTube audio sourcing is not configured yet.");
+      if (
+        typeof body.id !== "string" ||
+        !/^[a-zA-Z0-9_-]{11}$/.test(body.id) ||
+        typeof body.boardId !== "string" ||
+        typeof body.cardId !== "string"
+      )
+        throw new Error("Choose a clue and a YouTube video.");
+      const boards =
+        await sql`SELECT board FROM jeopardy_boards WHERE id = ${body.boardId} AND archived_at IS NULL`;
+      if (
+        !boards[0]?.board.categories.some(
+          (category: { cards: { id: string }[] }) =>
+            category.cards.some((card) => card.id === body.cardId),
+        )
+      )
+        throw new Error("Save this clue before sourcing audio.");
+      const cached =
+        await sql`SELECT source FROM jeopardy_audio_sources WHERE video_id = ${body.id}`;
+      if (cached[0]?.source) {
+        send(200, cached[0].source);
+        return;
+      }
+      const lease = randomUUID();
+      const claimed =
+        await sql`INSERT INTO jeopardy_audio_sources (video_id, lease) VALUES (${body.id}, ${lease}) ON CONFLICT (video_id) DO UPDATE SET lease = ${lease}, updated_at = now() WHERE jeopardy_audio_sources.source IS NULL AND jeopardy_audio_sources.updated_at < now() - interval '3 minutes' RETURNING video_id`;
+      if (!claimed.length) {
+        send(409, {
+          error:
+            "This recording is already being sourced. Wait a moment and choose it again.",
+        });
+        return;
+      }
+      try {
+        // Reserve once, atomically, before contacting the provider. Never refund failures or reset this budget.
+        const budget =
+          await sql`UPDATE jeopardy_source_budget SET reserved_credits = reserved_credits + ${CONVERSION_CREDITS}, last_request_at = now() WHERE id = 'youtube' AND reserved_credits + ${CONVERSION_CREDITS} <= ${SOURCE_CREDIT_LIMIT} AND (last_request_at IS NULL OR last_request_at < now() - interval '13 seconds') RETURNING reserved_credits`;
+        if (!budget.length) {
+          const current =
+            await sql`SELECT reserved_credits FROM jeopardy_source_budget WHERE id = 'youtube'`;
+          throw new Error(
+            Number(current[0]?.reserved_credits) + CONVERSION_CREDITS >
+            SOURCE_CREDIT_LIMIT
+              ? "The free YouTube conversion limit has been reached. Use Internet Archive or open a file."
+              : "Wait a few seconds before sourcing another YouTube recording.",
+          );
+        }
+        const source = await convertYouTube(
+          body.id,
+          Number(budget[0].reserved_credits) - CONVERSION_CREDITS,
+        );
+        await sql`UPDATE jeopardy_audio_sources SET source = ${JSON.stringify(source)}::jsonb, updated_at = now() WHERE video_id = ${body.id} AND lease = ${lease}`;
+        send(200, source);
+      } catch (error) {
+        await sql`DELETE FROM jeopardy_audio_sources WHERE video_id = ${body.id} AND lease = ${lease} AND source IS NULL`;
+        throw error;
+      }
       return;
     }
     if (parts[0] === "media" && req.method === "POST") {

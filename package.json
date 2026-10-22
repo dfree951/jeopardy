@@ -15,7 +15,8 @@
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
     "@neondatabase/serverless": "^1.0.2",
-    "@vercel/blob": "^2.8.2"
+    "@vercel/blob": "^2.8.2",
+    "youtubei.js": "^18.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",

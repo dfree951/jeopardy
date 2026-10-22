@@ -1,10 +1,17 @@
 import { trimBounds } from "./audio-trim";
-type SourceResult = { id: string; title: string; page: string };
+type SourceResult = {
+  id: string;
+  title: string;
+  page: string;
+  provider?: string;
+  detail?: string;
+};
 type SourceFile = {
   name: string;
   url: string;
   size: number;
   duration?: number;
+  contentType?: string;
 };
 const escape = (value: string) =>
   value.replace(
@@ -17,17 +24,18 @@ const escape = (value: string) =>
 export function openAudioSource(
   apiOrigin: string,
   attach: (file: File) => Promise<boolean>,
+  clue: { boardId: string; cardId: string },
 ) {
   const dialog = document.createElement("dialog");
   dialog.className = "audio-source";
   dialog.setAttribute("aria-labelledby", "source-heading");
   dialog.innerHTML = `<div class="section-heading"><h2 id="source-heading">Source MP3</h2><button type="button" id="source-close" aria-label="Close Source MP3">Close</button></div>
-    <form id="source-search"><label for="source-query">Song or sound</label><div class="source-search-row"><input id="source-query" maxlength="200" placeholder="powerpuff girls intro song" required><button type="submit">Search</button></div></form>
-    <p class="field-help">Search Internet Archive recordings or paste an archive.org link. YouTube links cannot be converted here.</p>
+    <form id="source-search"><label for="source-provider">Search in</label><select id="source-provider"><option value="youtube">YouTube</option><option value="archive">Internet Archive</option></select><label for="source-query">Song or sound</label><div class="source-search-row"><input id="source-query" maxlength="200" placeholder="powerpuff girls intro song" required><button type="submit">Search</button></div></form>
+    <p class="field-help">Search by title or paste a video link. Recordings can be up to 10 minutes long. Nothing plays automatically.</p>
     <label class="source-file-label" for="source-file">Or open audio or video from your device</label><input id="source-file" type="file" accept="audio/*,video/mp4,video/webm">
     <p id="source-status" role="status" aria-live="polite"></p><div id="source-results"></div>
     <section id="source-trim" hidden><h3 id="source-title"></h3><audio id="source-audio" controls preload="metadata"></audio>
-    <div class="trim-times"><label for="trim-start">Start (seconds)<input id="trim-start" type="number" min="0" step="0.1" value="0"></label><label for="trim-end">End (seconds)<input id="trim-end" type="number" min="0" step="0.1"></label></div>
+    <div class="trim-times"><label for="trim-start">Start (seconds)<input id="trim-start" type="number" min="0" step="0.001" value="0"></label><label for="trim-end">End (seconds)<input id="trim-end" type="number" min="0" step="0.001"></label></div>
     <div class="trim-buttons"><button type="button" id="trim-mark-start">Set start here</button><button type="button" id="trim-mark-end">Set end here</button><button type="button" id="trim-preview">Preview clip</button></div>
     <p class="field-help">Up to two minutes. Playback stays under the host’s control during the game.</p><p id="trim-length"></p><button type="button" id="trim-attach" class="primary">Attach trimmed MP3</button></section>`;
   document.body.append(dialog);
@@ -54,7 +62,9 @@ export function openAudioSource(
   const lock = (value: boolean) => {
     pending = value;
     dialog
-      .querySelectorAll<HTMLButtonElement | HTMLInputElement>("button,input")
+      .querySelectorAll<
+        HTMLButtonElement | HTMLInputElement | HTMLSelectElement
+      >("button,input,select")
       .forEach((el) => (el.disabled = value));
   };
   function close() {
@@ -73,10 +83,19 @@ export function openAudioSource(
     close();
   });
   find("source-close").onclick = close;
-  async function request(query: string) {
-    const response = await fetch(`${apiOrigin}/api/audio-sources?${query}`, {
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]),
-    });
+  async function request(query: string, body?: unknown) {
+    const response = await fetch(
+      `${apiOrigin}/api/audio-sources${body ? "/convert" : "?" + query}`,
+      {
+        method: body ? "POST" : "GET",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(body ? 110000 : 20000),
+        ]),
+      },
+    );
     const data = await response.json();
     if (!response.ok)
       throw new Error(data.error || "The source could not be loaded.");
@@ -135,7 +154,7 @@ export function openAudioSource(
     message("Loading recording…");
     lock(true);
     try {
-      // Only URLs returned by our fixed-host Archive metadata lookup are used.
+      // Only URLs returned by our source endpoints are used.
       const response = await fetch(file.url, {
         signal: AbortSignal.any([
           controller.signal,
@@ -157,7 +176,10 @@ export function openAudioSource(
         }
         chunks.push(new Uint8Array(chunk.value));
       }
-      await load(new Blob(chunks, { type: "audio/mpeg" }), file.name);
+      await load(
+        new Blob(chunks, { type: file.contentType || "audio/mpeg" }),
+        file.name,
+      );
     } catch (error) {
       message(
         (error as Error).message || "Could not load this recording.",
@@ -177,6 +199,7 @@ export function openAudioSource(
       const data = await request(
         new URLSearchParams({
           q: find<HTMLInputElement>("source-query").value.trim(),
+          provider: find<HTMLSelectElement>("source-provider").value,
         }).toString(),
       );
       if (ticket !== generation) return;
@@ -189,12 +212,19 @@ export function openAudioSource(
       for (const match of matches) {
         const row = document.createElement("div");
         row.className = "source-result";
-        row.innerHTML = `<div><strong>${escape(match.title)}</strong><a href="${escape(match.page)}" target="_blank" rel="noopener noreferrer">Internet Archive ↗</a></div><button type="button">Choose</button>`;
+        row.innerHTML = `<div><strong>${escape(match.title)}</strong><a href="${escape(match.page)}" target="_blank" rel="noopener noreferrer">${match.provider === "youtube" ? "YouTube" : "Internet Archive"} ↗</a>${match.detail ? `<small>${escape(match.detail)}</small>` : ""}</div><button type="button">Choose</button>`;
         row.querySelector("button")!.onclick = async () => {
           if (pending) return;
           lock(true);
           message("Finding audio files…");
           try {
+            if (match.provider === "youtube") {
+              message("Sourcing YouTube audio… This may take a minute.");
+              const file = await request("", { id: match.id, ...clue });
+              results.replaceChildren();
+              await loadRemote(file);
+              return;
+            }
             const item = await request(
               new URLSearchParams({ id: match.id }).toString(),
             );
