@@ -17,6 +17,55 @@ function playing(mode: "screen" | "buzzer" = "screen") {
     cardId: game.categories[0].cards[0].id,
   });
 }
+
+test("score edits work between clues using the most recent value or a direct total", () => {
+  let game = playing();
+  game = hostAction(game, {
+    type: "score",
+    playerId: game.players[0].id,
+    direction: 1,
+  });
+  assert.equal(game.active, null);
+  game = hostAction(game, {
+    type: "edit-score",
+    playerId: game.players[1].id,
+    direction: -1,
+  });
+  assert.equal(game.players[1].score, -200);
+  game = hostAction(game, {
+    type: "edit-score",
+    playerId: game.players[1].id,
+    score: 725,
+  });
+  assert.equal(game.players[1].score, 725);
+  game = hostAction(game, { type: "undo" });
+  assert.equal(game.players[1].score, -200);
+  assert.equal(game.active, null);
+  for (const score of [NaN, Infinity, 1.5, "200", 1000000001])
+    assert.throws(() =>
+      hostAction(game, {
+        type: "edit-score",
+        playerId: game.players[0].id,
+        score,
+      }),
+    );
+});
+test("score corrections and their undo preserve an open buzzer and clue state", () => {
+  let game = playing("buzzer");
+  game = hostAction(game, { type: "open" });
+  const before = structuredClone(game);
+  game = hostAction(game, {
+    type: "edit-score",
+    playerId: game.players[1].id,
+    score: -50,
+  });
+  assert.equal(game.buzzOpen, true);
+  assert.equal(game.active, before.active);
+  assert.deepEqual(game.attempted, before.attempted);
+  game = hostAction(game, { type: "undo" });
+  assert.equal(game.buzzOpen, true);
+  assert.deepEqual(game.players, before.players);
+});
 test("new boards keep inputs empty and gameplay supplies default labels", () => {
   const board = blankBoard();
   assert.equal(board.title, "");

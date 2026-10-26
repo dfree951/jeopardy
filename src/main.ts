@@ -1,4 +1,5 @@
 import "./style.css";
+import { openScoreEditor } from "./score-editor";
 import { openAudioSource } from "./audio-source";
 import {
   activeCard,
@@ -412,16 +413,19 @@ function renderGame() {
                 : "Game over"
             } ${g.players.length && g.players.filter((p) => p.score === Math.max(...g.players.map((p) => p.score))).length > 1 ? "tie!" : "wins!"}</h1>${scores(g)}${host ? '<a class="button gold" href="#library">Back to my games</a>' : ""}</section>`
           : card
-            ? `<section class="clue-view"><div class="clue-meta">${esc(category?.name)} <span>•</span> ${money(card.value)}</div><h1 class="clue-text">${esc(card.clue || "Media clue")}</h1>${clueMedia(g, card)}${g.revealed ? `<div class="answer"><span>ANSWER</span><p>${esc(card.answer)}</p></div>` : ""}${g.buzzed ? `<p class="buzz-announcement" role="status">${esc(g.players.find((p) => p.id === g.buzzed)?.name)} buzzed in</p>` : g.buzzOpen ? '<p class="buzz-announcement">Buzzers open</p>' : ""}</section>`
+            ? `<section class="clue-view"><div class="clue-meta">${esc(category?.name)} <span>•</span> ${money(card.value)}</div><h1 class="clue-text">${esc(card.clue || "Media clue")}</h1>${host ? mediaHostControls(g, card) : ""}${clueMedia(g, card)}${g.revealed ? `<div class="answer"><span>ANSWER</span><p>${esc(card.answer)}</p></div>` : ""}${g.buzzed ? `<p class="buzz-announcement" role="status">${esc(g.players.find((p) => p.id === g.buzzed)?.name)} buzzed in</p>` : g.buzzOpen ? '<p class="buzz-announcement">Buzzers open</p>' : ""}</section>`
             : boardGrid(g, host)
     }${g.status === "playing" ? scores(g) : ""}${host ? hostControls(g, card) : ""}</main><div class="connection-status" id="connection-status" role="status">Connected${display ? " · Player view" : ""}</div>`,
   );
   syncMedia(g);
 }
+function mediaHostControls(g: Game, card: Card) {
+  return `${card.media ? `<div class="host-media-controls" aria-label="Media controls"><span>${card.media.type === "image" ? "Picture" : card.media.type === "video" ? "Video" : "Audio"}</span>${card.media.type === "image" ? `<button data-action="media-show">${g.mediaPlayback?.visible ? "Hide picture" : "Show picture"}</button>` : `<button class="gold" data-action="media-play">${g.mediaPlayback?.playing ? "Pause" : "Play"} ${card.media.type}</button><button data-action="media-replay">Replay from start</button>${g.mediaPlayback?.visible ? '<button data-action="media-hide">Hide media</button>' : '<button data-action="media-show">Show media</button>'}`}</div>` : ""}`;
+}
 function hostControls(g: Game, card: Card | undefined) {
   return `<section class="host-controls" aria-label="Host controls">${
     card
-      ? `<div class="clue-actions">${!g.revealed ? '<button data-action="reveal">Reveal answer</button>' : ""}${g.mode === "buzzer" && !g.revealed ? `<button class="gold" data-action="${g.buzzOpen ? "close" : "open"}">${g.buzzOpen ? "Close buzzers" : "Open buzzers"}</button>` : ""}<button data-action="finish-card">Skip / back to board</button></div>${card.media ? `<div class="host-media-controls" aria-label="Media controls"><span>${card.media.type === "image" ? "Picture" : card.media.type === "video" ? "Video" : "Audio"}</span>${card.media.type === "image" ? `<button data-action="media-show">${g.mediaPlayback?.visible ? "Hide picture" : "Show picture"}</button>` : `<button class="gold" data-action="media-play">${g.mediaPlayback?.playing ? "Pause" : "Play"} ${card.media.type}</button><button data-action="media-replay">Replay from start</button>${g.mediaPlayback?.visible ? '<button data-action="media-hide">Hide media</button>' : '<button data-action="media-show">Show media</button>'}`}</div>` : ""}<div class="scoring-controls">${g.players
+      ? `<div class="clue-actions">${!g.revealed ? '<button data-action="reveal">Reveal answer</button>' : ""}${g.mode === "buzzer" && !g.revealed ? `<button class="gold" data-action="${g.buzzOpen ? "close" : "open"}">${g.buzzOpen ? "Close buzzers" : "Open buzzers"}</button>` : ""}<button data-action="finish-card">Skip / back to board</button></div><div class="scoring-controls">${g.players
           .filter((p) => g.mode === "screen" || p.id === g.buzzed)
           .map(
             (p) =>
@@ -431,7 +435,7 @@ function hostControls(g: Game, card: Card | undefined) {
             "",
           )}${g.mode === "buzzer" && !g.buzzed ? "<p>Open the buzzers, then score the first player to buzz in.</p>" : ""}</div>`
       : ""
-  }<div class="host-bottom"><span>Host controls</span><div><button data-action="undo" ${!g.history.length ? "disabled" : ""}>Undo last score</button><button data-action="finish" ${g.status === "finished" ? "disabled" : ""}>End game</button></div></div></section>`;
+  }<div class="host-bottom"><span>Host controls</span><div><button data-action="edit-scores" ${g.status === "lobby" || !g.players.length ? "disabled" : ""}>Edit scores</button><button data-action="undo" ${!g.history.length ? "disabled" : ""}>Undo last score</button><button data-action="finish" ${g.status === "finished" ? "disabled" : ""}>End game</button></div></div></section>`;
 }
 function renderPlayer() {
   if (!game) return;
@@ -925,6 +929,9 @@ app.addEventListener("click", async (event) => {
       }
       case "select":
         await action("select", { cardId: button.dataset.id });
+        break;
+      case "edit-scores":
+        openScoreEditor(() => game, action);
         break;
       case "score":
         await action("score", {

@@ -6,6 +6,8 @@ Create a board and play with teams or individuals. Use a shared screen, or let p
 
 The host selects clues, reveals answers, and keeps score. My games loads the shared boards from the database on every device. Edits save automatically, with a device copy kept if the connection drops. Boards can also be exported as JSON.
 
+During a game, Edit scores lets the host enter a total or add and subtract the most recent card’s value. Score corrections support Undo. Media controls appear inside the open clue.
+
 Cards can optionally include a picture, video, or audio clip up to 50 MB. Uploads are stored in Vercel Blob. The host chooses when to show them and can pause or replay clips. Player screens may need one click to enable sound.
 
 Attachments display when a clue opens unless “Display by default” is unchecked. Video and audio stay paused until the host presses Play.

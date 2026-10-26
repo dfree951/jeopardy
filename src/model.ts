@@ -36,7 +36,10 @@ export type Game = {
   status: "lobby" | "playing" | "finished";
   version: number;
   mediaPlayback?: MediaPlayback;
+  lastCardValue?: number;
   history: {
+    scoreEdit?: boolean;
+    lastCardValue?: number;
     players: Player[];
     used: string[];
     active: string | null;
@@ -124,6 +127,22 @@ export function activeCard(game: Game) {
   return game.categories
     .flatMap((c) => c.cards)
     .find((c) => c.id === game.active);
+}
+export function recentCardValue(game: Game): number | undefined {
+  return (
+    activeCard(game)?.value ||
+    game.lastCardValue ||
+    game.history
+      .slice()
+      .reverse()
+      .map(
+        (entry) =>
+          game.categories
+            .flatMap((category) => category.cards)
+            .find((card) => card.id === entry.active)?.value,
+      )
+      .find(Boolean)
+  );
 }
 export function publicGame(game: Game): Game {
   return {

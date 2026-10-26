@@ -1615,3 +1615,32 @@ legend {
     flex: 1;
   }
 }
+.score-edit-row {
+  padding: 12px 0 18px;
+  border-top: 1px solid #d9dfe7;
+}
+.score-edit-fields {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.score-edit-fields input {
+  flex: 1;
+  width: 0;
+}
+.score-edit-fields button {
+  flex-shrink: 0;
+}
+.clue-view .host-media-controls {
+  justify-content: center;
+  position: sticky;
+  top: 8px;
+  z-index: 2;
+  background: #101e48;
+  border: 1px solid #ffffff35;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 12px auto;
+  width: fit-content;
+  max-width: 100%;
+}

@@ -1,5 +1,6 @@
 import {
   activeCard,
+  recentCardValue,
   isCardReady,
   readyCards,
   validateBoard,
@@ -60,6 +61,7 @@ export function createGame(
 export function hostAction(game: Game, action: Record<string, unknown>): Game {
   const g = structuredClone(game);
   const card = activeCard(g);
+  let undoScoreOnly = false;
   switch (action.type) {
     case "start":
       if (g.status !== "lobby" || !g.players.length)
@@ -75,6 +77,7 @@ export function hostAction(game: Game, action: Record<string, unknown>): Game {
       if (!next || g.used.includes(next.id))
         throw new Error("That card is unavailable.");
       g.active = next.id;
+      g.lastCardValue = next.value;
       g.revealed = false;
       g.buzzOpen = false;
       g.buzzed = null;
@@ -123,6 +126,34 @@ export function hostAction(game: Game, action: Record<string, unknown>): Game {
     case "close":
       g.buzzOpen = false;
       break;
+    case "edit-score": {
+      if (!["playing", "finished"].includes(g.status))
+        throw new Error("Start the game before editing scores.");
+      const player = g.players.find((player) => player.id === action.playerId);
+      if (!player) throw new Error("Choose a team or player.");
+      let score: number;
+      if (action.direction !== undefined) {
+        const value = recentCardValue(g);
+        if (!value || ![1, -1].includes(action.direction as number))
+          throw new Error("Select a clue before using its value.");
+        score = player.score + value * (action.direction as number);
+      } else score = action.score as number;
+      if (!Number.isSafeInteger(score) || Math.abs(score) > 1000000000)
+        throw new Error(
+          "Enter a whole-number score between −1,000,000,000 and 1,000,000,000.",
+        );
+      g.history.push({
+        players: structuredClone(g.players),
+        used: [...g.used],
+        active: g.active,
+        revealed: g.revealed,
+        attempted: [...g.attempted],
+        scoreEdit: true,
+      });
+      g.history = g.history.slice(-50);
+      player.score = score;
+      break;
+    }
     case "score": {
       if (!card || g.status !== "playing")
         throw new Error("Select a clue first.");
@@ -170,10 +201,14 @@ export function hostAction(game: Game, action: Record<string, unknown>): Game {
     case "undo": {
       const previous = g.history.pop();
       if (!previous) throw new Error("Nothing to undo.");
-      Object.assign(g, previous);
-      g.buzzOpen = false;
-      g.buzzed = null;
-      g.status = "playing";
+      undoScoreOnly = !!previous.scoreEdit;
+      if (undoScoreOnly) g.players = previous.players;
+      else {
+        Object.assign(g, previous);
+        g.buzzOpen = false;
+        g.buzzed = null;
+        g.status = "playing";
+      }
       break;
     }
     case "finish":
@@ -187,7 +222,7 @@ export function hostAction(game: Game, action: Record<string, unknown>): Game {
   }
   if (
     g.active !== game.active ||
-    action.type === "undo" ||
+    (action.type === "undo" && !undoScoreOnly) ||
     g.status === "finished"
   )
     g.mediaPlayback =
